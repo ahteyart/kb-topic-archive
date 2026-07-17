@@ -381,6 +381,56 @@ export async function importMembers(
   }
 }
 
+// ---- user management (admin-only RPCs; DB re-checks is_admin) ------
+export type AppUser = {
+  id: string
+  email: string
+  role: MemberRole
+  createdAt: number
+  lastSignInAt: number | null
+}
+
+export async function listUsers(): Promise<AppUser[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase.rpc("admin_list_users")
+  if (error) throw error
+  return (data ?? []).map((u) => ({
+    id: u.id,
+    email: u.email ?? "",
+    role: u.role,
+    createdAt: ms(u.created_at),
+    lastSignInAt: u.last_sign_in_at ? ms(u.last_sign_in_at) : null,
+  }))
+}
+
+export async function createUser(email: string, password: string, role: MemberRole): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase.rpc("admin_create_user", {
+    p_email: email.trim(),
+    p_password: password,
+    p_role: role,
+  })
+  if (error) throw error
+}
+
+export async function updateUserRole(id: string, role: MemberRole): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase.rpc("admin_update_user", { p_user_id: id, p_role: role })
+  if (error) throw error
+}
+
+export async function resetUserPassword(id: string, password: string): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase.rpc("admin_update_user", { p_user_id: id, p_password: password })
+  if (error) throw error
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase.rpc("admin_delete_user", { p_user_id: id })
+  if (error) throw error
+}
+
 // supabase-js sometimes types an embedded to-one relation as T | T[]
 function pickOne<T>(v: T | T[] | null | undefined): T | null {
   if (v == null) return null

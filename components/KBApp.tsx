@@ -6,7 +6,7 @@ import {
   Search, Plus, ArrowLeft, Pencil, Trash2, X, BookOpen,
   ChevronRight, Menu, CheckCircle2, MessageCircle, Tag,
   Sparkles, Loader2, Users, HelpCircle, Contact, Upload, Phone, LogOut,
-  CornerDownRight,
+  CornerDownRight, UserCog, KeyRound,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -17,7 +17,8 @@ import { Avatar, StatusPill, CatDot, RoleBadge, CohortChip, SectionLabel, SideHe
 import {
   loadTopics, loadPeople, saveTopic, deleteTopic as apiDeleteTopic,
   addMember, updateMember, deleteMember, importMembers,
-  type Topic, type Person, type TopicDraft, type Message,
+  listUsers, createUser, updateUserRole, resetUserPassword, deleteUser,
+  type Topic, type Person, type TopicDraft, type Message, type AppUser,
 } from "@/lib/store"
 import type { MemberRole, TopicStatus } from "@/lib/database.types"
 
@@ -51,7 +52,7 @@ async function generateTags(draft: { title: string; discussion: string; conclusi
   return data as { tags: string[]; category: string | null }
 }
 
-type View = "list" | "detail" | "edit" | "roster" | "student" | "directory"
+type View = "list" | "detail" | "edit" | "roster" | "student" | "directory" | "users"
 
 // ---- main ----------------------------------------------------------
 export default function KBApp({ role, email }: { role: MemberRole; email: string | null }) {
@@ -188,7 +189,7 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
     )
   }
 
-  const inPeople = view === "roster" || view === "student" || view === "directory"
+  const inPeople = view === "roster" || view === "student" || view === "directory" || view === "users"
 
   return (
     <div className="min-h-screen" style={{ background: C.bg, fontFamily: sans, color: C.ink }}>
@@ -227,6 +228,9 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
             <SideItem label="课题库" count={topics.length} icon={BookOpen} active={!inPeople} onClick={() => { setView("list"); setNavOpen(false) }} />
             <SideItem label="学员积极度" count={students.length} icon={Users} active={view === "roster" || view === "student"} onClick={() => { setView("roster"); setNavOpen(false) }} />
             <SideItem label="学员名录" count={people.length} icon={Contact} active={view === "directory"} onClick={() => { setView("directory"); setNavOpen(false) }} />
+            {canEdit && (
+              <SideItem label="用户管理" icon={UserCog} active={view === "users"} onClick={() => { setView("users"); setNavOpen(false) }} />
+            )}
 
             {!inPeople && (
               <>
@@ -278,6 +282,7 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
           {view === "directory" && (
             <DirectoryView people={people} canEdit={canEdit} onAdd={onAddMember} onUpdate={onUpdateMember} onDelete={onDeleteMember} onImport={onImportMembers} />
           )}
+          {view === "users" && canEdit && <UsersView selfEmail={email} />}
           {view === "student" && activeStudent && (
             <StudentView s={activeStudent} onBack={() => setView("roster")} onOpenTopic={(t) => openTopic(t, "student")} />
           )}
@@ -951,6 +956,149 @@ function DirectoryView({ people, canEdit, onAdd, onUpdate, onDelete, onImport }:
       )}
     </div>
   )
+}
+
+// ---- user management (admin only) ----------------------------------
+function UsersView({ selfEmail }: { selfEmail: string | null }) {
+  const [users, setUsers] = useState<AppUser[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [mode, setMode] = useState<"list" | "add">("list")
+  const [form, setForm] = useState<{ email: string; password: string; role: MemberRole }>({ email: "", password: "", role: "student" })
+  const [confirmDel, setConfirmDel] = useState<AppUser | null>(null)
+  const [pwFor, setPwFor] = useState<AppUser | null>(null)
+  const [pw, setPw] = useState("")
+
+  const inputStyle: React.CSSProperties = { width: "100%", background: C.surface, border: `1px solid ${C.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, color: C.ink }
+
+  const load = useCallback(async () => {
+    try { setUsers(await listUsers()) } catch (e) { alert("加载用户失败:" + errText(e)) } finally { setLoading(false) }
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true)
+    try { await fn(); await load() } catch (e) { alert(errText(e)) } finally { setBusy(false) }
+  }
+
+  const submitAdd = () => run(async () => {
+    await createUser(form.email, form.password, form.role)
+    setForm({ email: "", password: "", role: "student" })
+    setMode("list")
+  })
+  const submitPw = () => run(async () => {
+    if (pwFor) await resetUserPassword(pwFor.id, pw)
+    setPwFor(null); setPw("")
+  })
+
+  const fmtDate = (t: number | null) => (t ? new Date(t).toLocaleDateString("zh-CN") : "—")
+
+  if (loading) return <p style={{ fontSize: 14, color: C.muted, padding: "20px 4px" }}>正在加载用户…</p>
+
+  return (
+    <div style={{ maxWidth: 760 }}>
+      <div className="flex items-center justify-between" style={{ marginBottom: 4, gap: 10, flexWrap: "wrap" }}>
+        <div className="flex items-baseline gap-2">
+          <h1 style={{ fontFamily: serif, fontSize: 22, color: C.ink }}>用户管理</h1>
+          <span style={{ fontFamily: mono, fontSize: 12, color: C.faint }}>{users.length} 个账号</span>
+        </div>
+        <button className="kb-focus" onClick={() => setMode(mode === "add" ? "list" : "add")} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.ink, color: "#fff", border: "none", borderRadius: 9, padding: "8px 13px", fontSize: 13.5, cursor: "pointer" }}>
+          <Plus size={15} /> 新增用户
+        </button>
+      </div>
+      <p style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>
+        这里管理的是<b>登录账号</b>(谁能进这个网站):管理人可增删改内容,学员账号登录后只能浏览。「学员名录」是通讯录,和登录账号是两回事。
+      </p>
+
+      {mode === "add" && (
+        <div style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 12, padding: 18, marginBottom: 18 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.ink, marginBottom: 12 }}>新增登录账号</div>
+          <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <input className="kb-focus" style={inputStyle} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="邮箱,例如 student@gmail.com" />
+            <input className="kb-focus" style={inputStyle} type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="初始密码(至少 6 位)" />
+          </div>
+          <div className="flex items-center gap-2" style={{ marginBottom: 14 }}>
+            {([["student", "学员(只读)"], ["admin", "管理人(可编辑)"]] as const).map(([v, l]) => (
+              <button key={v} className="kb-focus" onClick={() => setForm({ ...form, role: v })} style={{ background: form.role === v ? C.ink : "transparent", color: form.role === v ? "#fff" : C.inkSoft, border: form.role === v ? "none" : `1px solid ${C.line}`, borderRadius: 8, padding: "8px 14px", fontSize: 13, cursor: "pointer" }}>{l}</button>
+            ))}
+          </div>
+          <div className="flex items-center gap-3">
+            <button className="kb-focus" onClick={submitAdd} disabled={busy || !form.email.trim() || form.password.length < 6} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: !busy && form.email.trim() && form.password.length >= 6 ? C.ink : C.line, color: "#fff", border: "none", borderRadius: 9, padding: "9px 18px", fontSize: 14, cursor: !busy && form.email.trim() && form.password.length >= 6 ? "pointer" : "not-allowed" }}>
+              {busy && <Loader2 size={14} className="kb-spin" />} 创建账号
+            </button>
+            <button className="kb-focus" onClick={() => setMode("list")} style={{ background: "transparent", color: C.muted, border: "none", padding: "9px 8px", fontSize: 14, cursor: "pointer" }}>取消</button>
+            <span style={{ fontSize: 12.5, color: C.faint }}>创建后把邮箱和密码发给对方即可登录。</span>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gap: 8 }}>
+        {users.map((u) => {
+          const isSelf = !!selfEmail && u.email.toLowerCase() === selfEmail.toLowerCase()
+          return (
+            <div key={u.id} className="flex items-center gap-3" style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 11, padding: "11px 14px", flexWrap: "wrap" }}>
+              <Avatar name={u.email} size={36} />
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 14.5, fontWeight: 600, color: C.ink, fontFamily: mono }}>{u.email}</span>
+                  {u.role === "admin"
+                    ? <RoleBadge role="admin" small />
+                    : <span style={{ background: C.lineSoft, color: C.muted, fontSize: 10, fontWeight: 600, padding: "0 5px", borderRadius: 5, lineHeight: 1.8 }}>学员 · 只读</span>}
+                  {isSelf && <span style={{ fontSize: 11, color: C.accent }}>(我)</span>}
+                </div>
+                <div style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>
+                  创建 {fmtDate(u.createdAt)} · 最近登录 {fmtDate(u.lastSignInAt)}
+                </div>
+              </div>
+              <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
+                <button className="kb-focus" disabled={busy || (isSelf && u.role === "admin")} onClick={() => run(() => updateUserRole(u.id, u.role === "admin" ? "student" : "admin"))}
+                  title={isSelf && u.role === "admin" ? "不能把自己降为学员" : u.role === "admin" ? "改为学员(只读)" : "设为管理人"}
+                  style={{ background: "transparent", border: `1px solid ${C.line}`, borderRadius: 8, color: isSelf && u.role === "admin" ? C.faint : C.inkSoft, cursor: isSelf && u.role === "admin" ? "not-allowed" : "pointer", padding: "6px 10px", fontSize: 12.5 }}>
+                  {u.role === "admin" ? "改为学员" : "设为管理人"}
+                </button>
+                <button className="kb-focus" disabled={busy} onClick={() => { setPwFor(u); setPw("") }} aria-label="重置密码" title="重置密码"
+                  style={{ background: "transparent", border: "none", color: C.faint, cursor: "pointer", padding: 6 }}><KeyRound size={15} /></button>
+                <button className="kb-focus" disabled={busy || isSelf} onClick={() => setConfirmDel(u)} aria-label="删除账号" title={isSelf ? "不能删除自己" : "删除账号"}
+                  style={{ background: "transparent", border: "none", color: isSelf ? C.lineSoft : C.faint, cursor: isSelf ? "not-allowed" : "pointer", padding: 6 }}><Trash2 size={15} /></button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {pwFor && (
+        <div className="fixed inset-0 flex items-center justify-center" style={{ background: "rgba(27,42,74,0.35)", zIndex: 50, padding: 20 }} onClick={() => setPwFor(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.surface, borderRadius: 14, padding: 24, maxWidth: 380, width: "100%", boxShadow: "0 20px 50px rgba(27,42,74,0.2)" }}>
+            <div style={{ fontFamily: serif, fontSize: 17, marginBottom: 8 }}>重置 {pwFor.email} 的密码</div>
+            <input className="kb-focus" style={{ ...inputStyle, marginBottom: 16 }} type="text" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="新密码(至少 6 位)" autoFocus />
+            <div className="flex justify-end gap-3">
+              <button className="kb-focus" onClick={() => setPwFor(null)} style={{ background: C.bg, color: C.inkSoft, border: `1px solid ${C.line}`, borderRadius: 9, padding: "8px 16px", fontSize: 14, cursor: "pointer" }}>取消</button>
+              <button className="kb-focus" onClick={submitPw} disabled={busy || pw.length < 6} style={{ background: pw.length >= 6 ? C.ink : C.line, color: "#fff", border: "none", borderRadius: 9, padding: "8px 16px", fontSize: 14, cursor: pw.length >= 6 ? "pointer" : "not-allowed" }}>确认重置</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDel && (
+        <div className="fixed inset-0 flex items-center justify-center" style={{ background: "rgba(27,42,74,0.35)", zIndex: 50, padding: 20 }} onClick={() => setConfirmDel(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.surface, borderRadius: 14, padding: 24, maxWidth: 380, width: "100%", boxShadow: "0 20px 50px rgba(27,42,74,0.2)" }}>
+            <div style={{ fontFamily: serif, fontSize: 17, marginBottom: 8 }}>删除账号 {confirmDel.email}?</div>
+            <div style={{ color: C.muted, fontSize: 13.5, lineHeight: 1.6, marginBottom: 20 }}>删除后 TA 将无法登录。课题和名录数据不受影响。</div>
+            <div className="flex justify-end gap-3">
+              <button className="kb-focus" onClick={() => setConfirmDel(null)} style={{ background: C.bg, color: C.inkSoft, border: `1px solid ${C.line}`, borderRadius: 9, padding: "8px 16px", fontSize: 14, cursor: "pointer" }}>取消</button>
+              <button className="kb-focus" onClick={() => { const u = confirmDel; setConfirmDel(null); run(() => deleteUser(u.id)) }} style={{ background: C.danger, color: "#fff", border: "none", borderRadius: 9, padding: "8px 16px", fontSize: 14, cursor: "pointer" }}>删除</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Supabase RPC 的 raise exception 信息在 error.message 里
+function errText(e: unknown): string {
+  const m = e instanceof Error ? e.message : String(e)
+  return m.replace(/^.*?exception:?\s*/i, "")
 }
 
 // ---- people picker -------------------------------------------------

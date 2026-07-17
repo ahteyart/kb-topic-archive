@@ -297,6 +297,36 @@ export type Database = {
     }
     Functions: {
       is_admin: { Args: Record<string, never>; Returns: boolean }
+      admin_list_users: {
+        Args: Record<string, never>
+        Returns: {
+          id: string
+          email: string | null
+          role: Database["public"]["Enums"]["member_role"]
+          created_at: string | null
+          last_sign_in_at: string | null
+        }[]
+      }
+      admin_create_user: {
+        Args: {
+          p_email: string
+          p_password: string
+          p_role?: Database["public"]["Enums"]["member_role"]
+        }
+        Returns: string
+      }
+      admin_update_user: {
+        Args: {
+          p_user_id: string
+          p_role?: Database["public"]["Enums"]["member_role"] | null
+          p_password?: string | null
+        }
+        Returns: undefined
+      }
+      admin_delete_user: {
+        Args: { p_user_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       member_role: "student" | "admin"

@@ -50,7 +50,8 @@
       "Bash(npx --yes vercel@latest env pull /tmp/prod.env --environment=production --yes)",
       "Read(//tmp/**)",
       "Bash(rm -f /tmp/prod.env)",
-      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '讨论记录支持一级回复\\(问题下方可回复\\) *)"
+      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '讨论记录支持一级回复\\(问题下方可回复\\) *)",
+      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '用户管理:管理人可新增登录账号、设角色、重置密码、删除 *)"
     ]
   }
 }
