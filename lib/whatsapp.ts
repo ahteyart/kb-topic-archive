@@ -9,40 +9,55 @@ export type WaMsg = {
   text: string
 }
 
-// Android:12/05/2024, 10:23 - 陈美玲: 内容   (时间可含秒/am pm)
-const ANDROID_RE =
-  /^(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s?[apAP]\.?[mM]\.?)?)\s*-\s(.*)$/
-// iOS:[12/05/2024, 10:23:45] 陈美玲: 内容   (行首可能有不可见的 U+200E)
-const IOS_RE =
-  /^‎?\[(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s?[apAP]\.?[mM]\.?)?)\]\s(.*)$/
+// 日期 / 时间的通用片段(时间可含秒 / am·pm,大小写与点号皆可)
+const DATE_TOK = /\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}/
+const TIME_TOK = /\d{1,2}[:.]\d{2}(?:[:.]\d{2})?(?:\s?[apAP]\.?\s?[mM]\.?)?/
+// iOS:[日期, 时间] 或 [时间, 日期](不同地区顺序不同)+ 发言人: 内容
+const IOS_BRACKET_RE = /^[\s‎‏﻿]*\[([^\]]+)\]\s*([\s\S]*)$/
+// Android:日期, 时间 - 发言人: 内容(分隔符 - 或 –)
+const ANDROID_RE = new RegExp(
+  `^[\\s\\u200e\\u200f\\ufeff]*(${DATE_TOK.source}),?\\s+(${TIME_TOK.source})\\s*[-–]\\s([\\s\\S]*)$`
+)
 
 // 媒体占位(语音/图片/文件暂不转写)
 const MEDIA_RE =
   /<Media omitted>|<媒体已省略>|<媒体文件已省略>|\(file attached\)|(?:image|video|audio|sticker|GIF|document) omitted|已省略(?:图片|视频|音频|贴图|文档)/i
 
-const clean = (s: string) => s.replace(/[‎‏‪-‮]/g, "").trim()
+const clean = (s: string) => s.replace(/[​-‏‪-‮﻿]/g, "").trim()
+
+// 从一行里解析出「日期 / 时间 / 剩余(发言人: 内容)」,认不出返回 null
+function parseHeader(line: string): { date: string; time: string; rest: string } | null {
+  const b = IOS_BRACKET_RE.exec(line)
+  if (b) {
+    const dm = DATE_TOK.exec(b[1])
+    if (!dm) return null // 方括号里必须有个日期才算消息头
+    const tm = TIME_TOK.exec(b[1])
+    return { date: dm[0], time: tm ? tm[0] : "", rest: b[2] }
+  }
+  const a = ANDROID_RE.exec(line)
+  if (a) return { date: a[1], time: a[2], rest: a[3] }
+  return null
+}
 
 export function parseWaExport(raw: string): WaMsg[] {
   const lines = raw.split(/\r?\n/)
   const out: WaMsg[] = []
 
   for (const line of lines) {
-    const m = ANDROID_RE.exec(line) ?? IOS_RE.exec(line)
-    if (m) {
-      const rest = m[3]
+    const h = parseHeader(line)
+    if (h) {
       // 「发言人: 内容」;没有冒号的是系统消息(入群/改群名等),丢弃
-      const sp = /^(.+?):\s([\s\S]*)$/.exec(rest)
+      const sp = /^(.+?)[:：]\s?([\s\S]*)$/.exec(clean(h.rest))
       if (!sp) continue
       const speaker = clean(sp[1])
       let text = clean(sp[2])
       if (MEDIA_RE.test(text)) text = "[媒体]"
-      out.push({ date: m[1], time: m[2], speaker, text })
+      out.push({ date: h.date, time: h.time, speaker, text })
     } else if (out.length && clean(line)) {
       // 无时间戳的行:多行消息的后续行,并入上一条
       out[out.length - 1].text += "\n" + clean(line)
     }
   }
-  // 丢掉纯媒体且无文字的空消息不必要——保留 [媒体] 占位让上下文完整
   return out.filter((m) => m.text)
 }
 
