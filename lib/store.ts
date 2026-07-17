@@ -18,6 +18,7 @@ export type Message = {
   id: string
   speaker: string // member name or free-typed name ("" if unsigned)
   text: string
+  replies?: Message[] // 一级回复(仅顶层发言才有)
 }
 
 export type Topic = {
@@ -63,7 +64,7 @@ export async function loadTopics(): Promise<Topic[]> {
        cohort:cohorts(name),
        asker:members!topics_asker_id_fkey(name),
        contributors:topic_contributors(member:members(name)),
-       messages:discussion_messages(id, body, position, speaker_name, speaker:members(name))`
+       messages:discussion_messages(id, body, position, parent_id, speaker_name, speaker:members(name))`
     )
     .order("updated_at", { ascending: false })
   if (error) throw error
@@ -75,13 +76,19 @@ export async function loadTopics(): Promise<Topic[]> {
     const contributors = (t.contributors ?? [])
       .map((c) => pickOne(c.member)?.name)
       .filter((n): n is string => !!n)
-    const messages = (t.messages ?? [])
+    const rawMsgs = (t.messages ?? [])
       .slice()
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    const toMsg = (m: (typeof rawMsgs)[number]): Message => ({
+      id: m.id,
+      speaker: pickOne(m.speaker)?.name ?? m.speaker_name ?? "",
+      text: m.body,
+    })
+    const messages: Message[] = rawMsgs
+      .filter((m) => !m.parent_id)
       .map((m) => ({
-        id: m.id,
-        speaker: pickOne(m.speaker)?.name ?? m.speaker_name ?? "",
-        text: m.body,
+        ...toMsg(m),
+        replies: rawMsgs.filter((r) => r.parent_id === m.id).map(toMsg),
       }))
     return {
       id: t.id,
@@ -173,21 +180,32 @@ export async function saveTopic(draft: TopicDraft): Promise<string> {
 
   const tags = draft.tags.split(",").map((s) => s.trim()).filter(Boolean)
   const asker = draft.asker.trim()
-  const messages = draft.messages
-    .map((m) => ({ speaker: m.speaker.trim(), text: m.text.trim() }))
-    .filter((m) => m.speaker || m.text)
+
+  // top-level messages, each with its (trimmed, non-empty) replies
+  const topMsgs = draft.messages
+    .map((m) => ({
+      speaker: m.speaker.trim(),
+      text: m.text.trim(),
+      replies: (m.replies ?? [])
+        .map((r) => ({ speaker: r.speaker.trim(), text: r.text.trim() }))
+        .filter((r) => r.speaker || r.text),
+    }))
+    .filter((m) => m.speaker || m.text || m.replies.length)
+
+  // every speaker across questions + replies
+  const allSpeakers = topMsgs.flatMap((m) => [m.speaker, ...m.replies.map((r) => r.speaker)])
 
   // rule: everyone who spoke in the discussion is auto-added as a contributor
   const pickedContributors = draft.contributors.map((s) => s.trim()).filter(Boolean)
   const contributorNames = [
     ...new Set([
       ...pickedContributors,
-      ...messages.map((m) => m.speaker).filter((n) => n && n !== asker),
+      ...allSpeakers.filter((n) => n && n !== asker),
     ]),
   ]
 
   // resolve every referenced name (asker + contributors + speakers) to member ids
-  const allNames = [asker, ...contributorNames, ...messages.map((m) => m.speaker)]
+  const allNames = [asker, ...contributorNames, ...allSpeakers]
   const idMap = await resolveMemberIds(allNames.filter(Boolean))
   const cohortId = await resolveCohortId(draft.cohort)
   const askerId = asker ? idMap.get(asker) ?? null : null
@@ -235,18 +253,49 @@ export async function saveTopic(draft: TopicDraft): Promise<string> {
     if (error) throw error
   }
 
-  // discussion messages (ordered)
-  if (messages.length) {
+  // discussion messages: insert top-level questions first, then replies
+  if (topMsgs.length) {
     const { error } = await supabase.from("discussion_messages").insert(
-      messages.map((m, i) => ({
+      topMsgs.map((m, i) => ({
         topic_id: topicId!,
         speaker_id: m.speaker ? idMap.get(m.speaker) ?? null : null,
         speaker_name: m.speaker || null,
         body: m.text,
         position: i,
+        parent_id: null,
       }))
     )
     if (error) throw error
+
+    // fetch the new top-level ids in position order to attach replies
+    const withReplies = topMsgs.some((m) => m.replies.length)
+    if (withReplies) {
+      const { data: topRows, error: e2 } = await supabase
+        .from("discussion_messages")
+        .select("id, position")
+        .eq("topic_id", topicId!)
+        .is("parent_id", null)
+        .order("position", { ascending: true })
+      if (e2) throw e2
+      const idByPos = new Map((topRows ?? []).map((r) => [r.position, r.id]))
+
+      const replyRows = topMsgs.flatMap((m, i) => {
+        const parentId = idByPos.get(i)
+        if (!parentId) return []
+        return m.replies.map((r, j) => ({
+          topic_id: topicId!,
+          speaker_id: r.speaker ? idMap.get(r.speaker) ?? null : null,
+          speaker_name: r.speaker || null,
+          body: r.text,
+          position: j,
+          parent_id: parentId,
+        }))
+      })
+      if (replyRows.length) {
+        const { error: e3 } = await supabase.from("discussion_messages").insert(replyRows)
+        if (e3) throw e3
+      }
+    }
   }
 
   return topicId!

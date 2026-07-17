@@ -6,6 +6,7 @@ import {
   Search, Plus, ArrowLeft, Pencil, Trash2, X, BookOpen,
   ChevronRight, Menu, CheckCircle2, MessageCircle, Tag,
   Sparkles, Loader2, Users, HelpCircle, Contact, Upload, Phone, LogOut,
+  CornerDownRight,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -142,7 +143,7 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
     setView("edit")
   }
   const openEdit = (t: Topic) => {
-    setDraft({ id: t.id, title: t.title, category: t.category, cohort: t.cohort, status: t.status, discussion: t.discussion, conclusion: t.conclusion, tags: (t.tags || []).join(", "), asker: t.asker || "", contributors: t.contributors || [], messages: (t.messages || []).map((m) => ({ ...m })) })
+    setDraft({ id: t.id, title: t.title, category: t.category, cohort: t.cohort, status: t.status, discussion: t.discussion, conclusion: t.conclusion, tags: (t.tags || []).join(", "), asker: t.asker || "", contributors: t.contributors || [], messages: (t.messages || []).map((m) => ({ ...m, replies: (m.replies || []).map((r) => ({ ...r })) })) })
     setView("edit")
   }
   const saveDraft = async () => {
@@ -425,29 +426,11 @@ function DetailView({ t, people, canEdit, onBack, onEdit, onDelete, onStudent }:
 
       {t.messages?.length > 0 && (
         <section style={{ marginBottom: 24 }}>
-          <SectionLabel text={`讨论记录 · ${t.messages.length} 条发言`} />
+          <SectionLabel text={`讨论记录 · ${t.messages.reduce((n, m) => n + 1 + (m.replies?.length ?? 0), 0)} 条发言`} />
           <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
-            {t.messages.map((m) => {
-              const mrole = findRole(people, m.speaker)
-              return (
-                <div key={m.id} className="flex" style={{ gap: 10, alignItems: "flex-start" }}>
-                  <button className="kb-focus" onClick={() => m.speaker && onStudent(m.speaker)} style={{ background: "transparent", border: "none", padding: 0, cursor: m.speaker ? "pointer" : "default", flexShrink: 0, marginTop: 2 }}>
-                    <Avatar name={m.speaker || "?"} size={30} />
-                  </button>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="flex items-center gap-1.5" style={{ marginBottom: 3, flexWrap: "wrap" }}>
-                      <button className="kb-focus" onClick={() => m.speaker && onStudent(m.speaker)} style={{ background: "transparent", border: "none", padding: 0, cursor: m.speaker ? "pointer" : "default", fontSize: 13.5, fontWeight: 600, color: mrole === "admin" ? C.brass : C.ink }}>
-                        {m.speaker || "未署名"}
-                      </button>
-                      <RoleBadge role={mrole} small />
-                    </div>
-                    <div style={{ background: mrole === "admin" ? C.brassSoft : C.surface, border: `1px solid ${mrole === "admin" ? "#EADFC6" : C.line}`, borderRadius: "3px 12px 12px 12px", padding: "9px 13px", fontSize: 14.5, color: C.inkSoft, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-                      {m.text}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+            {t.messages.map((m) => (
+              <MsgBubble key={m.id} m={m} people={people} onStudent={onStudent} />
+            ))}
           </div>
         </section>
       )}
@@ -483,6 +466,36 @@ function DetailView({ t, people, canEdit, onBack, onEdit, onDelete, onStudent }:
   )
 }
 
+// one discussion bubble + its one-level replies (indented)
+function MsgBubble({ m, people, onStudent, reply }: { m: Message; people: Person[]; onStudent: (name: string) => void; reply?: boolean }) {
+  const mrole = findRole(people, m.speaker)
+  return (
+    <div className="flex" style={{ gap: 10, alignItems: "flex-start" }}>
+      <button className="kb-focus" onClick={() => m.speaker && onStudent(m.speaker)} style={{ background: "transparent", border: "none", padding: 0, cursor: m.speaker ? "pointer" : "default", flexShrink: 0, marginTop: 2 }}>
+        <Avatar name={m.speaker || "?"} size={reply ? 26 : 30} />
+      </button>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="flex items-center gap-1.5" style={{ marginBottom: 3, flexWrap: "wrap" }}>
+          <button className="kb-focus" onClick={() => m.speaker && onStudent(m.speaker)} style={{ background: "transparent", border: "none", padding: 0, cursor: m.speaker ? "pointer" : "default", fontSize: reply ? 13 : 13.5, fontWeight: 600, color: mrole === "admin" ? C.brass : C.ink }}>
+            {m.speaker || "未署名"}
+          </button>
+          <RoleBadge role={mrole} small />
+        </div>
+        <div style={{ background: mrole === "admin" ? C.brassSoft : C.surface, border: `1px solid ${mrole === "admin" ? "#EADFC6" : C.line}`, borderRadius: "3px 12px 12px 12px", padding: reply ? "7px 11px" : "9px 13px", fontSize: reply ? 13.5 : 14.5, color: C.inkSoft, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+          {m.text}
+        </div>
+        {!reply && (m.replies?.length ?? 0) > 0 && (
+          <div style={{ marginTop: 10, marginLeft: 4, paddingLeft: 14, borderLeft: `2px solid ${C.lineSoft}`, display: "grid", gap: 10 }}>
+            {m.replies!.map((r) => (
+              <MsgBubble key={r.id} m={r} people={people} onStudent={onStudent} reply />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ---- edit view -----------------------------------------------------
 function EditView({ draft, setDraft, onSave, onCancel, categories, people, busy }: {
   draft: TopicDraft; setDraft: (d: TopicDraft) => void; onSave: () => void; onCancel: () => void; categories: string[]; people: Person[]; busy: boolean
@@ -493,9 +506,12 @@ function EditView({ draft, setDraft, onSave, onCancel, categories, people, busy 
   const canTag = (draft.title + draft.discussion + draft.conclusion).trim().length > 3
 
   const msgs = draft.messages
-  const addMsg = () => setDraft({ ...draft, messages: [...msgs, { id: uid(), speaker: draft.asker || "", text: "" }] })
+  const addMsg = () => setDraft({ ...draft, messages: [...msgs, { id: uid(), speaker: draft.asker || "", text: "", replies: [] }] })
   const updateMsg = (i: number, patch: Partial<Message>) => setDraft({ ...draft, messages: msgs.map((m, j) => (j === i ? { ...m, ...patch } : m)) })
   const removeMsg = (i: number) => setDraft({ ...draft, messages: msgs.filter((_, j) => j !== i) })
+  const addReply = (i: number) => setDraft({ ...draft, messages: msgs.map((m, j) => (j === i ? { ...m, replies: [...(m.replies ?? []), { id: uid(), speaker: "", text: "" }] } : m)) })
+  const updateReply = (i: number, k: number, patch: Partial<Message>) => setDraft({ ...draft, messages: msgs.map((m, j) => (j === i ? { ...m, replies: (m.replies ?? []).map((r, l) => (l === k ? { ...r, ...patch } : r)) } : m)) })
+  const removeReply = (i: number, k: number) => setDraft({ ...draft, messages: msgs.map((m, j) => (j === i ? { ...m, replies: (m.replies ?? []).filter((_, l) => l !== k) } : m)) })
 
   const autoTag = async () => {
     setTagging("loading")
@@ -568,6 +584,25 @@ function EditView({ draft, setDraft, onSave, onCancel, categories, people, busy 
                 <button className="kb-focus" onClick={() => removeMsg(i)} aria-label="删除这条发言" style={{ background: "transparent", border: "none", color: C.faint, cursor: "pointer", padding: 6, flexShrink: 0 }}><Trash2 size={15} /></button>
               </div>
               <textarea className="kb-focus" style={{ ...inputStyle, minHeight: 52, resize: "vertical" }} value={m.text} onChange={(e) => updateMsg(i, { text: e.target.value })} placeholder="TA 说了什么…" />
+
+              {(m.replies ?? []).length > 0 && (
+                <div style={{ marginTop: 10, marginLeft: 14, paddingLeft: 12, borderLeft: `2px solid ${C.line}`, display: "grid", gap: 8 }}>
+                  {(m.replies ?? []).map((r, k) => (
+                    <div key={r.id || k} style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 8, padding: 8 }}>
+                      <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <PeoplePicker people={people} value={r.speaker} onChange={(v) => updateReply(i, k, { speaker: v as string })} placeholder="谁回复的?" />
+                        </div>
+                        <button className="kb-focus" onClick={() => removeReply(i, k)} aria-label="删除这条回复" style={{ background: "transparent", border: "none", color: C.faint, cursor: "pointer", padding: 6, flexShrink: 0 }}><Trash2 size={14} /></button>
+                      </div>
+                      <textarea className="kb-focus" style={{ ...inputStyle, minHeight: 44, resize: "vertical" }} value={r.text} onChange={(e) => updateReply(i, k, { text: e.target.value })} placeholder="回复内容…" />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button className="kb-focus" onClick={() => addReply(i)} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "transparent", color: C.accent, border: "none", cursor: "pointer", fontSize: 12.5, padding: "8px 2px 2px", marginLeft: (m.replies ?? []).length ? 14 : 0 }}>
+                <CornerDownRight size={13} /> 回复
+              </button>
             </div>
           ))}
         </div>

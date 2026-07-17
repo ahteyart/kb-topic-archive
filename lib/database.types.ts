@@ -41,6 +41,7 @@ export type Database = {
           body: string
           created_at: string | null
           id: string
+          parent_id: string | null
           position: number
           speaker_id: string | null
           speaker_name: string | null
@@ -50,6 +51,7 @@ export type Database = {
           body: string
           created_at?: string | null
           id?: string
+          parent_id?: string | null
           position?: number
           speaker_id?: string | null
           speaker_name?: string | null
@@ -59,6 +61,7 @@ export type Database = {
           body?: string
           created_at?: string | null
           id?: string
+          parent_id?: string | null
           position?: number
           speaker_id?: string | null
           speaker_name?: string | null
