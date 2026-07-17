@@ -41,7 +41,12 @@
       "Bash(git push *)",
       "Bash(GIT_TERMINAL_PROMPT=0 GIT_CURL_VERBOSE=1 git ls-remote https://github.com/ahteyart/kb-topic-archive.git)",
       "Bash(git ls-remote *)",
-      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '详情页标题改 18px;去掉宋体,标题统一无衬线 *)"
+      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '详情页标题改 18px;去掉宋体,标题统一无衬线 *)",
+      "mcp__63502f0f-b3f7-48c8-bf14-49d1a7e90f0b__get_project",
+      "Bash(npx --yes vercel@latest whoami)",
+      "Bash(npx --yes vercel@latest link --yes --project kb-topic-archive)",
+      "Bash(npx --yes vercel@latest deploy --prod --yes)",
+      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '标题去粗体;编辑页「课题标题」改为「课题讨论」多行文本框;详情/列表保留换行分段 *)"
     ]
   }
 }

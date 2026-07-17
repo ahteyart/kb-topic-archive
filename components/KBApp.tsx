@@ -350,7 +350,7 @@ function ListView({ topics, total, onOpen, activeCat, activeStatus, search, onNe
               <span className="flex-1" />
               <StatusPill status={t.status} />
             </div>
-            <h2 style={{ fontFamily: serif, fontSize: 17, fontWeight: 600, color: C.ink, lineHeight: 1.4, marginBottom: 6 }}>{t.title}</h2>
+            <h2 style={{ fontFamily: serif, fontSize: 17, fontWeight: 400, color: C.ink, lineHeight: 1.5, marginBottom: 6, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap" }}>{t.title}</h2>
             {t.conclusion && (
               <p style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.65, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{t.conclusion}</p>
             )}
@@ -390,7 +390,7 @@ function DetailView({ t, people, canEdit, onBack, onEdit, onDelete, onStudent }:
         <StatusPill status={t.status} />
       </div>
 
-      <h1 style={{ fontFamily: serif, fontSize: 18, fontWeight: 600, color: C.ink, lineHeight: 1.5, marginBottom: 16 }}>{t.title}</h1>
+      <h1 style={{ fontFamily: serif, fontSize: 18, fontWeight: 400, color: C.ink, lineHeight: 1.7, marginBottom: 16, whiteSpace: "pre-wrap" }}>{t.title}</h1>
 
       {hasPeople && (
         <div className="flex items-center gap-3" style={{ flexWrap: "wrap", marginBottom: 22, paddingBottom: 20, borderBottom: `1px solid ${C.lineSoft}` }}>
@@ -521,8 +521,8 @@ function EditView({ draft, setDraft, onSave, onCancel, categories, people, busy 
         <button className="kb-focus" onClick={onCancel} style={{ background: "transparent", border: "none", color: C.faint, cursor: "pointer", padding: 4 }} aria-label="关闭"><X size={20} /></button>
       </div>
 
-      <Field label="课题标题" required>
-        <input className="kb-focus" style={inputStyle} value={draft.title} onChange={set("title")} placeholder="这次讨论的是什么问题?" />
+      <Field label="课题讨论" required>
+        <textarea className="kb-focus" style={{ ...inputStyle, minHeight: 120, resize: "vertical", lineHeight: 1.7 }} value={draft.title} onChange={set("title")} placeholder="这次讨论的是什么?可以换行分段写。" />
       </Field>
 
       <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 14 }}>
