@@ -165,6 +165,39 @@ export type Database = {
           },
         ]
       }
+      topic_drafts: {
+        Row: {
+          chat_name: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          payload: Json
+          source: string
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          chat_name?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          payload: Json
+          source?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          chat_name?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          payload?: Json
+          source?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       topic_contributors: {
         Row: {
           member_id: string

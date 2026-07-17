@@ -6,7 +6,7 @@ import {
   Search, Plus, ArrowLeft, Pencil, Trash2, X, BookOpen,
   ChevronRight, Menu, CheckCircle2, MessageCircle, Tag,
   Sparkles, Loader2, Users, HelpCircle, Contact, Upload, Phone, LogOut,
-  CornerDownRight, UserCog, KeyRound,
+  CornerDownRight, UserCog, KeyRound, MessageSquarePlus,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -18,8 +18,11 @@ import {
   loadTopics, loadPeople, saveTopic, deleteTopic as apiDeleteTopic,
   addMember, updateMember, deleteMember, importMembers,
   listUsers, createUser, updateUserRole, resetUserPassword, deleteUser,
+  loadDrafts, createDrafts, setDraftStatus, deleteDraft, draftToTopicDraft,
   type Topic, type Person, type TopicDraft, type Message, type AppUser,
+  type WaDraft, type DraftRow, type DraftStatus,
 } from "@/lib/store"
+import { parseWaExport, matchSpeaker, waDates, filterByDateRange } from "@/lib/whatsapp"
 import type { MemberRole, TopicStatus } from "@/lib/database.types"
 
 // ---- small helpers -------------------------------------------------
@@ -52,7 +55,7 @@ async function generateTags(draft: { title: string; discussion: string; conclusi
   return data as { tags: string[]; category: string | null }
 }
 
-type View = "list" | "detail" | "edit" | "roster" | "student" | "directory" | "users"
+type View = "list" | "detail" | "edit" | "roster" | "student" | "directory" | "users" | "waimport"
 
 // ---- main ----------------------------------------------------------
 export default function KBApp({ role, email }: { role: MemberRole; email: string | null }) {
@@ -76,6 +79,8 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
   const [navOpen, setNavOpen] = useState(false)
   const [rosterRole, setRosterRole] = useState<"student" | "admin" | "all">("student")
   const [rosterCohort, setRosterCohort] = useState<string | null>(null)
+  // 正在编辑的 WhatsApp 草稿:保存成功后把它标成「已入库」
+  const [pendingDraftId, setPendingDraftId] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
     const [t, p] = await Promise.all([loadTopics(), loadPeople()])
@@ -152,6 +157,11 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
     setBusy(true)
     try {
       const id = await saveTopic(draft)
+      if (pendingDraftId) {
+        // 从 WhatsApp 草稿编辑而来:入库后标记草稿状态
+        try { await setDraftStatus(pendingDraftId, "已入库") } catch { /* 草稿标记失败不影响课题 */ }
+        setPendingDraftId(null)
+      }
       await reload()
       setSelectedId(id); setDetailFrom("list"); setView("detail")
     } catch (e) {
@@ -159,6 +169,12 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
     } finally {
       setBusy(false)
     }
+  }
+  // 从草稿箱进入编辑器
+  const openDraftEdit = (row: DraftRow) => {
+    setDraft(draftToTopicDraft(row.payload))
+    setPendingDraftId(row.id)
+    setView("edit")
   }
   const doDelete = async (id: string) => {
     setBusy(true)
@@ -189,7 +205,7 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
     )
   }
 
-  const inPeople = view === "roster" || view === "student" || view === "directory" || view === "users"
+  const inPeople = view === "roster" || view === "student" || view === "directory" || view === "users" || view === "waimport"
 
   return (
     <div className="min-h-screen" style={{ background: C.bg, fontFamily: sans, color: C.ink }}>
@@ -228,6 +244,9 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
             <SideItem label="课题库" count={topics.length} icon={BookOpen} active={!inPeople} onClick={() => { setView("list"); setNavOpen(false) }} />
             <SideItem label="学员积极度" count={students.length} icon={Users} active={view === "roster" || view === "student"} onClick={() => { setView("roster"); setNavOpen(false) }} />
             <SideItem label="学员名录" count={people.length} icon={Contact} active={view === "directory"} onClick={() => { setView("directory"); setNavOpen(false) }} />
+            {canEdit && (
+              <SideItem label="WhatsApp 导入" icon={MessageSquarePlus} active={view === "waimport"} onClick={() => { setView("waimport"); setNavOpen(false) }} />
+            )}
             {canEdit && (
               <SideItem label="用户管理" icon={UserCog} active={view === "users"} onClick={() => { setView("users"); setNavOpen(false) }} />
             )}
@@ -274,7 +293,7 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
             <Empty title="找不到这条课题" body="可能已被删除。" cta="返回课题库" onCta={() => setView("list")} />
           )}
           {view === "edit" && draft && (
-            <EditView draft={draft} setDraft={setDraft} onSave={saveDraft} busy={busy} onCancel={() => { if (draft.id) { setSelectedId(draft.id); setView("detail") } else setView("list") }} categories={categories.map((c) => c[0])} people={people} />
+            <EditView draft={draft} setDraft={setDraft} onSave={saveDraft} busy={busy} onCancel={() => { if (pendingDraftId) { setPendingDraftId(null); setView("waimport") } else if (draft.id) { setSelectedId(draft.id); setView("detail") } else setView("list") }} categories={categories.map((c) => c[0])} people={people} />
           )}
           {view === "roster" && (
             <RosterView students={rosterList} maxScore={maxScore} onOpen={openStudent} role={rosterRole} setRole={setRosterRole} counts={{ student: students.filter((s) => s.role === "student").length, admin: students.filter((s) => s.role === "admin").length, all: students.length }} cohort={rosterCohort} setCohort={setRosterCohort} cohorts={cohorts} />
@@ -283,6 +302,9 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
             <DirectoryView people={people} canEdit={canEdit} onAdd={onAddMember} onUpdate={onUpdateMember} onDelete={onDeleteMember} onImport={onImportMembers} />
           )}
           {view === "users" && canEdit && <UsersView selfEmail={email} />}
+          {view === "waimport" && canEdit && (
+            <WaImportView people={people} onEditDraft={openDraftEdit} onIngested={reload} />
+          )}
           {view === "student" && activeStudent && (
             <StudentView s={activeStudent} onBack={() => setView("roster")} onOpenTopic={(t) => openTopic(t, "student")} />
           )}
@@ -950,6 +972,310 @@ function DirectoryView({ people, canEdit, onAdd, onUpdate, onDelete, onImport }:
             <div className="flex justify-end gap-3">
               <button className="kb-focus" onClick={() => setConfirm(null)} style={{ background: C.bg, color: C.inkSoft, border: `1px solid ${C.line}`, borderRadius: 9, padding: "8px 16px", fontSize: 14, cursor: "pointer" }}>取消</button>
               <button className="kb-focus" onClick={() => { onDelete(confirm.id); setConfirm(null) }} style={{ background: C.danger, color: "#fff", border: "none", borderRadius: 9, padding: "8px 16px", fontSize: 14, cursor: "pointer" }}>移除</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---- WhatsApp import (admin only) -----------------------------------
+function WaImportView({ people, onEditDraft, onIngested }: {
+  people: Person[]
+  onEditDraft: (row: DraftRow) => void
+  onIngested: () => Promise<void>
+}) {
+  const [raw, setRaw] = useState("")
+  const [chatName, setChatName] = useState("")
+  const [from, setFrom] = useState("")
+  const [to, setTo] = useState("")
+  const [segBusy, setSegBusy] = useState(false)
+  const [segProgress, setSegProgress] = useState("")
+  const [drafts, setDrafts] = useState<DraftRow[]>([])
+  const [draftsLoading, setDraftsLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState<DraftStatus>("待审核")
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [confirmDel, setConfirmDel] = useState<DraftRow | null>(null)
+
+  const inputStyle: React.CSSProperties = { width: "100%", background: C.surface, border: `1px solid ${C.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, color: C.ink }
+
+  const msgs = useMemo(() => parseWaExport(raw), [raw])
+  const dates = useMemo(() => waDates(msgs), [msgs])
+  useEffect(() => {
+    setFrom(dates[0] ?? "")
+    setTo(dates[dates.length - 1] ?? "")
+  }, [dates])
+  const filtered = useMemo(
+    () => (from && to ? filterByDateRange(msgs, dates, from, to) : msgs),
+    [msgs, dates, from, to]
+  )
+
+  // 发言人匹配预览
+  const speakerStats = useMemo(() => {
+    const uniq = [...new Set(filtered.map((m) => m.speaker))]
+    const matched: string[] = []
+    const unmatched: string[] = []
+    uniq.forEach((s) => {
+      const m = matchSpeaker(s, people)
+      if (people.some((p) => p.name === m)) matched.push(s)
+      else unmatched.push(s)
+    })
+    return { matched, unmatched }
+  }, [filtered, people])
+
+  const loadAll = useCallback(async () => {
+    try { setDrafts(await loadDrafts()) } catch (e) { alert("加载草稿失败:" + errText(e)) } finally { setDraftsLoading(false) }
+  }, [])
+  useEffect(() => { loadAll() }, [loadAll])
+
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    const r = new FileReader()
+    r.onload = () => setRaw(String(r.result || ""))
+    r.readAsText(f)
+    if (!chatName) setChatName(f.name.replace(/\.txt$/i, "").replace(/^WhatsApp Chat with /i, "").replace(/^与.*?的 WhatsApp 聊天/, ""))
+    e.target.value = ""
+  }
+
+  const segment = async () => {
+    if (!filtered.length || segBusy) return
+    setSegBusy(true)
+    try {
+      const send = filtered.map((m) => ({ speaker: matchSpeaker(m.speaker, people), text: m.text }))
+      const memberNames = people.map((p) => p.name)
+      const CHUNK = 200
+      const nChunks = Math.ceil(send.length / CHUNK)
+      const all: WaDraft[] = []
+      for (let c = 0; c < nChunks; c++) {
+        setSegProgress(nChunks > 1 ? `AI 分段中… 第 ${c + 1}/${nChunks} 段` : "AI 分段中…")
+        const slice = send.slice(c * CHUNK, (c + 1) * CHUNK)
+        const res = await fetch("/api/wa-segment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: slice, memberNames }),
+        })
+        if (!res.ok) throw new Error(`服务器返回 ${res.status}`)
+        const data = await res.json()
+        if (data.error) throw new Error(data.error)
+        for (const d of data.drafts ?? []) {
+          const messages = (d.indexes as number[]).map((i) => slice[i]).filter(Boolean)
+          if (!messages.length) continue
+          all.push({
+            title: d.title,
+            category: d.category || "",
+            tags: d.tags || [],
+            asker: d.asker || "",
+            discussion: "",
+            conclusion: d.conclusion || "",
+            messages,
+          })
+        }
+      }
+      if (!all.length) {
+        alert("AI 没有识别出课题(这段消息可能都是闲聊或通知)。")
+      } else {
+        await createDrafts(chatName, all)
+        await loadAll()
+        setRaw("")
+        setStatusFilter("待审核")
+      }
+    } catch (e) {
+      alert("分段失败:" + errText(e))
+    } finally {
+      setSegBusy(false)
+      setSegProgress("")
+    }
+  }
+
+  const ingestDirect = async (row: DraftRow) => {
+    setBusyId(row.id)
+    try {
+      await saveTopic(draftToTopicDraft(row.payload))
+      await setDraftStatus(row.id, "已入库")
+      await Promise.all([loadAll(), onIngested()])
+    } catch (e) { alert("入库失败:" + errText(e)) } finally { setBusyId(null) }
+  }
+  const mark = async (row: DraftRow, status: DraftStatus) => {
+    setBusyId(row.id)
+    try { await setDraftStatus(row.id, status); await loadAll() } catch (e) { alert(errText(e)) } finally { setBusyId(null) }
+  }
+  const hardDelete = async (row: DraftRow) => {
+    setBusyId(row.id)
+    try { await deleteDraft(row.id); await loadAll() } catch (e) { alert(errText(e)) } finally { setBusyId(null); setConfirmDel(null) }
+  }
+
+  const counts: Record<DraftStatus, number> = {
+    待审核: drafts.filter((d) => d.status === "待审核").length,
+    已入库: drafts.filter((d) => d.status === "已入库").length,
+    已弃用: drafts.filter((d) => d.status === "已弃用").length,
+  }
+  const shown = drafts.filter((d) => d.status === statusFilter)
+  const fmt = (t: number) => new Date(t).toLocaleDateString("zh-CN")
+
+  return (
+    <div style={{ maxWidth: 760 }}>
+      <div className="flex items-baseline gap-2" style={{ marginBottom: 6 }}>
+        <h1 style={{ fontFamily: serif, fontSize: 22, color: C.ink }}>WhatsApp 导入</h1>
+      </div>
+      <p style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.7 }}>
+        手机上打开群聊 → 右上角 ⋮ → 更多 → <b>导出聊天记录</b>(选「不含媒体」)→ 把 .txt 文件传到这里或直接粘贴内容。
+        AI 会把聊天切分成课题草稿,你审核后入库。语音和图片暂以「[媒体]」占位。
+      </p>
+
+      {/* 上传 / 粘贴 */}
+      <div style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 12, padding: 18, marginBottom: 18 }}>
+        <div className="flex items-center gap-2" style={{ marginBottom: 10, flexWrap: "wrap" }}>
+          <label className="kb-focus" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.ink, color: "#fff", borderRadius: 9, padding: "8px 13px", fontSize: 13.5, cursor: "pointer" }}>
+            <Upload size={15} /> 选择 .txt 文件
+            <input type="file" accept=".txt,text/plain" onChange={onFile} style={{ display: "none" }} />
+          </label>
+          <input className="kb-focus" style={{ ...inputStyle, flex: 1, minWidth: 160 }} value={chatName} onChange={(e) => setChatName(e.target.value)} placeholder="群名/备注(可选,例如 第2期学习群)" />
+        </div>
+        <textarea className="kb-focus" value={raw} onChange={(e) => setRaw(e.target.value)}
+          placeholder={"或直接把导出的内容粘贴到这里,例如:\n12/05/2024, 10:23 - 陈美玲: 我让 ChatGPT 写文案,但是…\n12/05/2024, 10:25 - 郑老师: 你的指令太短了…"}
+          style={{ ...inputStyle, minHeight: 140, resize: "vertical", fontFamily: mono, fontSize: 12.5, lineHeight: 1.7 }} />
+
+        {raw.trim() && (
+          <div style={{ marginTop: 12 }}>
+            {msgs.length === 0 ? (
+              <div style={{ fontSize: 13, color: C.danger }}>没有识别到消息——请确认粘贴的是 WhatsApp 导出的原始格式(每行以日期时间开头)。</div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2" style={{ flexWrap: "wrap", fontSize: 12.5, color: C.inkSoft, marginBottom: 10 }}>
+                  <span style={{ background: C.accentSoft, color: C.accent, borderRadius: 6, padding: "3px 9px", fontWeight: 600 }}>识别 {filtered.length} 条消息</span>
+                  <span style={{ background: C.bg, border: `1px solid ${C.line}`, borderRadius: 6, padding: "3px 9px" }}>已匹配名录 {speakerStats.matched.length} 人</span>
+                  {speakerStats.unmatched.length > 0 && (
+                    <span style={{ background: C.brassSoft, color: C.brass, borderRadius: 6, padding: "3px 9px" }} title={speakerStats.unmatched.join("、")}>
+                      未匹配 {speakerStats.unmatched.length} 个(入库时会自动建成员)
+                    </span>
+                  )}
+                </div>
+                {dates.length > 1 && (
+                  <div className="flex items-center gap-2" style={{ flexWrap: "wrap", marginBottom: 12, fontSize: 13 }}>
+                    <span style={{ color: C.muted }}>日期范围</span>
+                    <select className="kb-focus" value={from} onChange={(e) => setFrom(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 13 }}>
+                      {dates.map((d) => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                    <span style={{ color: C.faint }}>至</span>
+                    <select className="kb-focus" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 13 }}>
+                      {dates.map((d) => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                )}
+                <button className="kb-focus" onClick={segment} disabled={segBusy || !filtered.length}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, background: segBusy ? C.faint : C.accent, color: "#fff", border: "none", borderRadius: 9, padding: "9px 18px", fontSize: 14, fontWeight: 500, cursor: segBusy ? "default" : "pointer" }}>
+                  {segBusy ? <Loader2 size={14} className="kb-spin" /> : <Sparkles size={14} />}
+                  {segBusy ? segProgress || "AI 分段中…" : "AI 分段成课题草稿"}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 草稿箱 */}
+      <div className="flex items-center gap-2" style={{ marginBottom: 12, flexWrap: "wrap" }}>
+        <span style={{ fontFamily: mono, fontSize: 11, letterSpacing: 1.5, color: C.faint, textTransform: "uppercase", fontWeight: 600 }}>草稿箱</span>
+        {(["待审核", "已入库", "已弃用"] as DraftStatus[]).map((s) => (
+          <button key={s} className="kb-focus" onClick={() => setStatusFilter(s)}
+            style={{ background: statusFilter === s ? C.ink : "transparent", color: statusFilter === s ? "#fff" : C.inkSoft, border: statusFilter === s ? "none" : `1px solid ${C.line}`, borderRadius: 8, padding: "5px 11px", fontSize: 12.5, cursor: "pointer", fontWeight: statusFilter === s ? 600 : 400 }}>
+            {s} <span style={{ opacity: 0.7 }}>{counts[s]}</span>
+          </button>
+        ))}
+      </div>
+
+      {draftsLoading ? (
+        <p style={{ fontSize: 13.5, color: C.faint }}>正在加载草稿…</p>
+      ) : shown.length === 0 ? (
+        <p style={{ fontSize: 13.5, color: C.faint, padding: "8px 2px" }}>
+          {statusFilter === "待审核" ? "没有待审核的草稿。上面粘贴聊天记录后点「AI 分段」即可生成。" : `没有${statusFilter}的草稿。`}
+        </p>
+      ) : (
+        <div style={{ display: "grid", gap: 10 }}>
+          {shown.map((row) => {
+            const p = row.payload
+            const rowBusy = busyId === row.id
+            return (
+              <article key={row.id} style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 12, padding: "14px 16px" }}>
+                <div className="flex items-center gap-2" style={{ marginBottom: 6, flexWrap: "wrap" }}>
+                  {p.category && (
+                    <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12, color: C.muted }}>
+                      <CatDot category={p.category} /> {p.category}
+                    </span>
+                  )}
+                  {row.chatName && <span style={{ fontSize: 12, color: C.faint }}>· {row.chatName}</span>}
+                  <span style={{ fontSize: 12, color: C.faint }}>· {p.messages.length} 条发言 · {fmt(row.createdAt)}</span>
+                  <span className="flex-1" />
+                  {p.asker && (
+                    <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12.5, color: C.inkSoft }}>
+                      <Avatar name={p.asker} size={18} /> {p.asker} 发问
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 15, color: C.ink, lineHeight: 1.5, marginBottom: 6 }}>{p.title}</div>
+                {p.conclusion && (
+                  <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", marginBottom: 8 }}>
+                    结论:{p.conclusion}
+                  </p>
+                )}
+                {p.tags.length > 0 && (
+                  <div className="flex items-center gap-1.5" style={{ flexWrap: "wrap", marginBottom: 10 }}>
+                    {p.tags.map((tg) => (
+                      <span key={tg} style={{ background: C.bg, border: `1px solid ${C.line}`, borderRadius: 5, padding: "1px 7px", fontSize: 11.5, color: C.inkSoft }}>{tg}</span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+                  {row.status === "待审核" && (
+                    <>
+                      <button className="kb-focus" disabled={rowBusy} onClick={() => onEditDraft(row)}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, background: C.ink, color: "#fff", border: "none", borderRadius: 8, padding: "7px 13px", fontSize: 13, cursor: "pointer" }}>
+                        <Pencil size={13} /> 编辑并入库
+                      </button>
+                      <button className="kb-focus" disabled={rowBusy} onClick={() => ingestDirect(row)}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, background: C.accentSoft, color: C.accent, border: "1px solid #CDE6E4", borderRadius: 8, padding: "7px 13px", fontSize: 13, cursor: "pointer" }}>
+                        {rowBusy ? <Loader2 size={13} className="kb-spin" /> : <CheckCircle2 size={13} />} 直接入库
+                      </button>
+                      <button className="kb-focus" disabled={rowBusy} onClick={() => mark(row, "已弃用")}
+                        style={{ background: "transparent", color: C.muted, border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 13, cursor: "pointer" }}>
+                        弃用
+                      </button>
+                    </>
+                  )}
+                  {row.status === "已弃用" && (
+                    <>
+                      <button className="kb-focus" disabled={rowBusy} onClick={() => mark(row, "待审核")}
+                        style={{ background: C.bg, color: C.inkSoft, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 13px", fontSize: 13, cursor: "pointer" }}>
+                        恢复到待审核
+                      </button>
+                      <button className="kb-focus" disabled={rowBusy} onClick={() => setConfirmDel(row)}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "transparent", color: C.danger, border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 13, cursor: "pointer" }}>
+                        <Trash2 size={13} /> 彻底删除
+                      </button>
+                    </>
+                  )}
+                  {row.status === "已入库" && (
+                    <span className="inline-flex items-center gap-1" style={{ fontSize: 12.5, color: C.accent }}>
+                      <CheckCircle2 size={13} /> 已入库
+                    </span>
+                  )}
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      )}
+
+      {confirmDel && (
+        <div className="fixed inset-0 flex items-center justify-center" style={{ background: "rgba(27,42,74,0.35)", zIndex: 50, padding: 20 }} onClick={() => setConfirmDel(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.surface, borderRadius: 14, padding: 24, maxWidth: 380, width: "100%", boxShadow: "0 20px 50px rgba(27,42,74,0.2)" }}>
+            <div style={{ fontFamily: serif, fontSize: 17, marginBottom: 8 }}>彻底删除这条草稿?</div>
+            <div style={{ color: C.muted, fontSize: 13.5, lineHeight: 1.6, marginBottom: 20 }}>删除后无法恢复(已入库的课题不受影响)。</div>
+            <div className="flex justify-end gap-3">
+              <button className="kb-focus" onClick={() => setConfirmDel(null)} style={{ background: C.bg, color: C.inkSoft, border: `1px solid ${C.line}`, borderRadius: 9, padding: "8px 16px", fontSize: 14, cursor: "pointer" }}>取消</button>
+              <button className="kb-focus" onClick={() => hardDelete(confirmDel)} style={{ background: C.danger, color: "#fff", border: "none", borderRadius: 9, padding: "8px 16px", fontSize: 14, cursor: "pointer" }}>删除</button>
             </div>
           </div>
         </div>

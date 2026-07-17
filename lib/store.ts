@@ -4,7 +4,7 @@
 // name-based shapes, so the ported UI code can stay almost identical.
 import { createClient } from "@/lib/supabase/client"
 import { digits } from "@/lib/tokens"
-import type { MemberRole, TopicStatus } from "@/lib/database.types"
+import type { Json, MemberRole, TopicStatus } from "@/lib/database.types"
 
 export type Person = {
   id: string
@@ -378,6 +378,93 @@ export async function importMembers(
         cohort_id: cohortId,
       })
     }
+  }
+}
+
+// ---- WhatsApp import drafts (admin-only; RLS enforces) --------------
+export type WaDraft = {
+  title: string
+  category: string
+  tags: string[]
+  asker: string
+  discussion: string
+  conclusion: string
+  messages: { speaker: string; text: string }[]
+}
+
+export type DraftStatus = "待审核" | "已入库" | "已弃用"
+
+export type DraftRow = {
+  id: string
+  chatName: string
+  payload: WaDraft
+  status: DraftStatus
+  createdAt: number
+}
+
+export async function loadDrafts(): Promise<DraftRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from("topic_drafts")
+    .select("id, chat_name, payload, status, created_at")
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return (data ?? []).map((d) => ({
+    id: d.id,
+    chatName: d.chat_name ?? "",
+    payload: d.payload as unknown as WaDraft,
+    status: d.status as DraftStatus,
+    createdAt: ms(d.created_at),
+  }))
+}
+
+export async function createDrafts(chatName: string, drafts: WaDraft[]): Promise<void> {
+  if (!drafts.length) return
+  const supabase = createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const { error } = await supabase.from("topic_drafts").insert(
+    drafts.map((payload) => ({
+      chat_name: chatName.trim() || null,
+      payload: payload as unknown as Json,
+      created_by: user?.id ?? null,
+    }))
+  )
+  if (error) throw error
+}
+
+export async function setDraftStatus(id: string, status: DraftStatus): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase.from("topic_drafts").update({ status }).eq("id", id)
+  if (error) throw error
+}
+
+export async function deleteDraft(id: string): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase.from("topic_drafts").delete().eq("id", id)
+  if (error) throw error
+}
+
+// 草稿 → 编辑器可用的 TopicDraft(保存走现有 saveTopic,自动获得
+// 编号递增/名录外建成员/发言人并入参与者等全部既有规则)
+export function draftToTopicDraft(d: WaDraft): TopicDraft {
+  return {
+    id: null,
+    title: d.title,
+    category: d.category || "",
+    cohort: "",
+    status: d.conclusion ? "已结论" : "讨论中",
+    discussion: d.discussion || "",
+    conclusion: d.conclusion || "",
+    tags: (d.tags || []).join(", "),
+    asker: d.asker || "",
+    contributors: [],
+    messages: (d.messages || []).map((m) => ({
+      id: Math.random().toString(36).slice(2, 10),
+      speaker: m.speaker,
+      text: m.text,
+    })),
   }
 }
 
