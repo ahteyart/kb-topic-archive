@@ -17,10 +17,10 @@ export const C = {
   danger: "#B4453A",
 } as const
 
-export const serif =
-  'Georgia, "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", serif'
 export const sans =
   'system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif'
+// 应用户要求去掉宋体:标题不再用衬线,统一走无衬线(中文走苹方 / 微软雅黑)
+export const serif = sans
 export const mono = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace'
 
 const CAT_COLORS = [

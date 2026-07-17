@@ -390,7 +390,7 @@ function DetailView({ t, people, canEdit, onBack, onEdit, onDelete, onStudent }:
         <StatusPill status={t.status} />
       </div>
 
-      <h1 style={{ fontFamily: serif, fontSize: 27, fontWeight: 600, color: C.ink, lineHeight: 1.35, marginBottom: 16 }}>{t.title}</h1>
+      <h1 style={{ fontFamily: serif, fontSize: 18, fontWeight: 600, color: C.ink, lineHeight: 1.5, marginBottom: 16 }}>{t.title}</h1>
 
       {hasPeople && (
         <div className="flex items-center gap-3" style={{ flexWrap: "wrap", marginBottom: 22, paddingBottom: 20, borderBottom: `1px solid ${C.lineSoft}` }}>

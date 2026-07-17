@@ -28,7 +28,20 @@
       "mcp__63502f0f-b3f7-48c8-bf14-49d1a7e90f0b__deploy_to_vercel",
       "Bash(git init *)",
       "Bash(git add *)",
-      "Bash(git -c user.name=Claude -c user.email=noreply@anthropic.com commit -q -m '课题知识库:多人网页版 \\(Next.js + Supabase\\) *)"
+      "Bash(git -c user.name=Claude -c user.email=noreply@anthropic.com commit -q -m '课题知识库:多人网页版 \\(Next.js + Supabase\\) *)",
+      "Bash(gh --version)",
+      "Bash(gh auth *)",
+      "Bash(env)",
+      "mcp__github__create_repository",
+      "Bash(cd \"D:/Claude/knowledge Management\" && rm -f /tmp/genpayload.js \"C:/Users/USER/AppData/Local/Temp/claude/D--Claude-knowledge-Management/f7b25a79-d3f9-4786-a979-539e62b114fa/scratchpad/payload.json\" && git status --short | head; echo \"=== git ready ===\"; git log --oneline -1)",
+      "mcp__github__search_users",
+      "Bash(git credential *)",
+      "Bash(git branch *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(GIT_TERMINAL_PROMPT=0 GIT_CURL_VERBOSE=1 git ls-remote https://github.com/ahteyart/kb-topic-archive.git)",
+      "Bash(git ls-remote *)",
+      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '详情页标题改 18px;去掉宋体,标题统一无衬线 *)"
     ]
   }
 }
