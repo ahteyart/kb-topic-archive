@@ -100,7 +100,7 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
 
   const categories = useMemo(() => {
     const m = new Map<string, number>()
-    topics.forEach((t) => m.set(t.category || "未分类", (m.get(t.category || "未分类") || 0) + 1))
+    topics.forEach((t) => m.set(t.category || "未定主题", (m.get(t.category || "未定主题") || 0) + 1))
     return [...m.entries()].sort((a, b) => b[1] - a[1])
   }, [topics])
 
@@ -108,7 +108,7 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
     const q = search.trim().toLowerCase()
     return topics
       .filter((t) => {
-        if (catFilter && (t.category || "未分类") !== catFilter) return false
+        if (catFilter && (t.category || "未定主题") !== catFilter) return false
         if (statusFilter && t.status !== statusFilter) return false
         if (!q) return true
         const hay = [t.title, t.conclusion, t.discussion, t.code, t.cohort, (t.tags || []).join(" ")].join(" ").toLowerCase()
@@ -254,7 +254,7 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
             {!inPeople && (
               <>
                 <div style={{ height: 18 }} />
-                <SideHeading text="分类" />
+                <SideHeading text="课题主题" />
                 <SideItem label="全部课题" count={topics.length} active={!catFilter} onClick={() => { setCatFilter(null); setNavOpen(false) }} />
                 {categories.map(([name, count]) => (
                   <SideItem key={name} label={name} count={count} dot={catColor(name)} active={catFilter === name} onClick={() => { setCatFilter(name); setNavOpen(false) }} />
@@ -373,7 +373,7 @@ function ListView({ topics, total, onOpen, activeCat, activeStatus, search, onNe
             onMouseEnter={(e) => (e.currentTarget.style.borderColor = C.accent)} onMouseLeave={(e) => (e.currentTarget.style.borderColor = C.line)}>
             <div className="flex items-center gap-2" style={{ marginBottom: 8, flexWrap: "wrap" }}>
               <span style={{ fontFamily: mono, fontSize: 12, color: C.brass, fontWeight: 600 }}>{t.code}</span>
-              <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12, color: C.muted }}><CatDot category={t.category} /> {t.category || "未分类"}</span>
+              <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12, color: C.muted }}><CatDot category={t.category} /> {t.category || "未定主题"}</span>
               {t.cohort && <span style={{ fontSize: 12, color: C.faint }}>· {t.cohort}</span>}
               <span className="flex-1" />
               <StatusPill status={t.status} />
@@ -412,7 +412,7 @@ function DetailView({ t, people, canEdit, onBack, onEdit, onDelete, onStudent }:
 
       <div className="flex items-center gap-2" style={{ marginBottom: 12, flexWrap: "wrap" }}>
         <span style={{ fontFamily: mono, fontSize: 13, color: C.brass, fontWeight: 600 }}>{t.code}</span>
-        <span className="inline-flex items-center gap-1.5" style={{ fontSize: 13, color: C.inkSoft }}><CatDot category={t.category} /> {t.category || "未分类"}</span>
+        <span className="inline-flex items-center gap-1.5" style={{ fontSize: 13, color: C.inkSoft }}><CatDot category={t.category} /> {t.category || "未定主题"}</span>
         {t.cohort && <span style={{ fontSize: 13, color: C.faint }}>· {t.cohort}</span>}
         <span className="flex-1" />
         <StatusPill status={t.status} />
@@ -569,7 +569,7 @@ function EditView({ draft, setDraft, onSave, onCancel, categories, people, busy 
       </Field>
 
       <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field label="分类">
+        <Field label="课题主题">
           <input className="kb-focus" style={inputStyle} value={draft.category} onChange={set("category")} placeholder="例如:AI工具应用" list="cat-list" />
           <datalist id="cat-list">{categories.map((c) => <option key={c} value={c} />)}</datalist>
         </Field>
