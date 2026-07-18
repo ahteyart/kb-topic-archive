@@ -95,6 +95,7 @@ export type Database = {
         Row: {
           cohort_id: string | null
           created_at: string | null
+          english_name: string | null
           id: string
           name: string
           phone: string | null
@@ -103,6 +104,7 @@ export type Database = {
         Insert: {
           cohort_id?: string | null
           created_at?: string | null
+          english_name?: string | null
           id?: string
           name: string
           phone?: string | null
@@ -111,6 +113,7 @@ export type Database = {
         Update: {
           cohort_id?: string | null
           created_at?: string | null
+          english_name?: string | null
           id?: string
           name?: string
           phone?: string | null

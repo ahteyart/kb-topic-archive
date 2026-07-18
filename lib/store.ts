@@ -8,7 +8,8 @@ import type { Json, MemberRole, TopicStatus } from "@/lib/database.types"
 
 export type Person = {
   id: string
-  name: string
+  name: string // 中文名(主名:课题的发问人/参与者/发言人都引用它)
+  englishName: string
   phone: string
   role: MemberRole
   cohort: string // cohort name ("" if none)
@@ -113,12 +114,13 @@ export async function loadPeople(): Promise<Person[]> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from("members")
-    .select(`id, name, phone, role, cohort:cohorts(name)`)
+    .select(`id, name, english_name, phone, role, cohort:cohorts(name)`)
     .order("created_at", { ascending: true })
   if (error) throw error
   return (data ?? []).map((m) => ({
     id: m.id,
     name: m.name,
+    englishName: m.english_name ?? "",
     phone: m.phone ?? "",
     role: m.role,
     cohort: pickOne(m.cohort)?.name ?? "",
@@ -310,6 +312,7 @@ export async function deleteTopic(id: string): Promise<void> {
 // ---- member mutations ----------------------------------------------
 export async function addMember(p: {
   name: string
+  englishName?: string
   phone?: string
   role?: MemberRole
   cohort?: string
@@ -318,6 +321,7 @@ export async function addMember(p: {
   const cohortId = await resolveCohortId(p.cohort ?? "")
   const { error } = await supabase.from("members").insert({
     name: p.name.trim(),
+    english_name: (p.englishName ?? "").trim() || null,
     phone: (p.phone ?? "").trim() || null,
     role: p.role ?? "student",
     cohort_id: cohortId,
@@ -327,7 +331,7 @@ export async function addMember(p: {
 
 export async function updateMember(
   id: string,
-  patch: { name: string; phone: string; role: MemberRole; cohort: string }
+  patch: { name: string; englishName: string; phone: string; role: MemberRole; cohort: string }
 ): Promise<void> {
   const supabase = createClient()
   const cohortId = await resolveCohortId(patch.cohort)
@@ -335,6 +339,7 @@ export async function updateMember(
     .from("members")
     .update({
       name: patch.name.trim(),
+      english_name: patch.englishName.trim() || null,
       phone: patch.phone.trim() || null,
       role: patch.role,
       cohort_id: cohortId,

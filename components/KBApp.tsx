@@ -192,8 +192,8 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
 
   // member ops (wrapped to reload)
   const wrap = (fn: () => Promise<void>) => async () => { setBusy(true); try { await fn(); await reload() } catch (e) { alert((e as Error).message) } finally { setBusy(false) } }
-  const onAddMember = (p: { name: string; phone?: string; role?: MemberRole; cohort?: string }) => wrap(() => addMember(p))()
-  const onUpdateMember = (id: string, patch: { name: string; phone: string; role: MemberRole; cohort: string }) => wrap(() => updateMember(id, patch))()
+  const onAddMember = (p: { name: string; englishName?: string; phone?: string; role?: MemberRole; cohort?: string }) => wrap(() => addMember(p))()
+  const onUpdateMember = (id: string, patch: { name: string; englishName: string; phone: string; role: MemberRole; cohort: string }) => wrap(() => updateMember(id, patch))()
   const onDeleteMember = (id: string) => wrap(() => deleteMember(id))()
   const onImportMembers = (list: { name: string; phone: string; role: MemberRole; cohort: string }[]) => wrap(() => importMembers(list, people))()
 
@@ -822,8 +822,8 @@ function StudentView({ s, onBack, onOpenTopic }: { s: StudentAgg; onBack: () => 
 // ---- directory -----------------------------------------------------
 function DirectoryView({ people, canEdit, onAdd, onUpdate, onDelete, onImport }: {
   people: Person[]; canEdit: boolean
-  onAdd: (p: { name: string; phone?: string; role?: MemberRole; cohort?: string }) => void
-  onUpdate: (id: string, patch: { name: string; phone: string; role: MemberRole; cohort: string }) => void
+  onAdd: (p: { name: string; englishName?: string; phone?: string; role?: MemberRole; cohort?: string }) => void
+  onUpdate: (id: string, patch: { name: string; englishName: string; phone: string; role: MemberRole; cohort: string }) => void
   onDelete: (id: string) => void
   onImport: (list: { name: string; phone: string; role: MemberRole; cohort: string }[]) => void
 }) {
@@ -831,7 +831,7 @@ function DirectoryView({ people, canEdit, onAdd, onUpdate, onDelete, onImport }:
   const [cohortFilter, setCohortFilter] = useState("")
   const [mode, setMode] = useState<"list" | "import" | "add">("list")
   const [raw, setRaw] = useState("")
-  const [form, setForm] = useState<{ name: string; phone: string; role: MemberRole; cohort: string }>({ name: "", phone: "", role: "student", cohort: "" })
+  const [form, setForm] = useState<{ name: string; englishName: string; phone: string; role: MemberRole; cohort: string }>({ name: "", englishName: "", phone: "", role: "student", cohort: "" })
   const [editId, setEditId] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<Person | null>(null)
 
@@ -840,19 +840,24 @@ function DirectoryView({ people, canEdit, onAdd, onUpdate, onDelete, onImport }:
   const shown = people.filter((p) => {
     if (cohortFilter && (p.cohort || "") !== cohortFilter) return false
     if (!ql) return true
-    return p.name.toLowerCase().includes(ql) || (!!digits(q) && digits(p.phone).includes(digits(q)))
+    return (
+      p.name.toLowerCase().includes(ql) ||
+      p.englishName.toLowerCase().includes(ql) ||
+      (!!digits(q) && digits(p.phone).includes(digits(q)))
+    )
   })
   const preview = mode === "import" ? parsePeople(raw) : []
 
   const inputStyle: React.CSSProperties = { width: "100%", background: C.surface, border: `1px solid ${C.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, color: C.ink }
 
+  const blankForm = { name: "", englishName: "", phone: "", role: "student" as MemberRole, cohort: "" }
   const submitForm = () => {
     if (!form.name.trim()) return
-    if (editId) onUpdate(editId, { name: form.name.trim(), phone: form.phone.trim(), role: form.role, cohort: form.cohort.trim() })
+    if (editId) onUpdate(editId, { name: form.name.trim(), englishName: form.englishName.trim(), phone: form.phone.trim(), role: form.role, cohort: form.cohort.trim() })
     else onAdd(form)
-    setForm({ name: "", phone: "", role: "student", cohort: "" }); setEditId(null); setMode("list")
+    setForm(blankForm); setEditId(null); setMode("list")
   }
-  const startEdit = (p: Person) => { setForm({ name: p.name, phone: p.phone, role: p.role, cohort: p.cohort || "" }); setEditId(p.id); setMode("add") }
+  const startEdit = (p: Person) => { setForm({ name: p.name, englishName: p.englishName, phone: p.phone, role: p.role, cohort: p.cohort || "" }); setEditId(p.id); setMode("add") }
 
   return (
     <div style={{ maxWidth: 760 }}>
@@ -866,13 +871,13 @@ function DirectoryView({ people, canEdit, onAdd, onUpdate, onDelete, onImport }:
             <button className="kb-focus" onClick={() => { setMode(mode === "import" ? "list" : "import"); setEditId(null) }} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.surface, color: C.ink, border: `1px solid ${C.line}`, borderRadius: 9, padding: "8px 13px", fontSize: 13.5, cursor: "pointer" }}>
               <Upload size={15} /> 导入
             </button>
-            <button className="kb-focus" onClick={() => { setForm({ name: "", phone: "", role: "student", cohort: "" }); setEditId(null); setMode(mode === "add" ? "list" : "add") }} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.ink, color: "#fff", border: "none", borderRadius: 9, padding: "8px 13px", fontSize: 13.5, cursor: "pointer" }}>
+            <button className="kb-focus" onClick={() => { setForm(blankForm); setEditId(null); setMode(mode === "add" ? "list" : "add") }} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.ink, color: "#fff", border: "none", borderRadius: 9, padding: "8px 13px", fontSize: 13.5, cursor: "pointer" }}>
               <Plus size={15} /> 新增
             </button>
           </div>
         )}
       </div>
-      <p style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>用名字或联络号码搜索。名字和号码会自动出现在课题的发问 / 回答选择里。</p>
+      <p style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>用中文名、英文名或联络号码搜索。名字和号码会自动出现在课题的发问 / 回答选择里。</p>
 
       {canEdit && mode === "import" && (
         <div style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 12, padding: 18, marginBottom: 18 }}>
@@ -895,17 +900,17 @@ function DirectoryView({ people, canEdit, onAdd, onUpdate, onDelete, onImport }:
         <div style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 12, padding: 18, marginBottom: 18 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: C.ink, marginBottom: 12 }}>{editId ? "编辑" : "新增"}成员</div>
           <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-            <input className="kb-focus" style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="名字" />
-            <input className="kb-focus" style={inputStyle} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="联络号码" />
+            <input className="kb-focus" style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="中文名" />
+            <input className="kb-focus" style={inputStyle} value={form.englishName} onChange={(e) => setForm({ ...form, englishName: e.target.value })} placeholder="英文名(可选)" />
           </div>
-          <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14, alignItems: "center" }}>
-            <input className="kb-focus" style={inputStyle} value={form.cohort} onChange={(e) => setForm({ ...form, cohort: e.target.value })} placeholder="期数,例如 第1期" list="cohort-list" />
-            <datalist id="cohort-list">{cohorts.map((c) => <option key={c} value={c} />)}</datalist>
-            <div className="flex items-center gap-2">
-              {([["student", "学员"], ["admin", "管理人"]] as const).map(([v, l]) => (
-                <button key={v} className="kb-focus" onClick={() => setForm({ ...form, role: v })} style={{ background: form.role === v ? C.ink : "transparent", color: form.role === v ? "#fff" : C.inkSoft, border: form.role === v ? "none" : `1px solid ${C.line}`, borderRadius: 8, padding: "8px 14px", fontSize: 13, cursor: "pointer" }}>{l}</button>
-              ))}
-            </div>
+          <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <input className="kb-focus" style={inputStyle} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="联络号码" />
+            <CohortSelect value={form.cohort} onChange={(v) => setForm({ ...form, cohort: v })} cohorts={cohorts} />
+          </div>
+          <div className="flex items-center gap-2" style={{ marginBottom: 14 }}>
+            {([["student", "学员"], ["admin", "管理人"]] as const).map(([v, l]) => (
+              <button key={v} className="kb-focus" onClick={() => setForm({ ...form, role: v })} style={{ background: form.role === v ? C.ink : "transparent", color: form.role === v ? "#fff" : C.inkSoft, border: form.role === v ? "none" : `1px solid ${C.line}`, borderRadius: 8, padding: "8px 14px", fontSize: 13, cursor: "pointer" }}>{l}</button>
+            ))}
           </div>
           <div className="flex items-center gap-3">
             <button className="kb-focus" onClick={submitForm} disabled={!form.name.trim()} style={{ background: form.name.trim() ? C.ink : C.line, color: "#fff", border: "none", borderRadius: 9, padding: "9px 18px", fontSize: 14, cursor: form.name.trim() ? "pointer" : "not-allowed" }}>
@@ -919,7 +924,7 @@ function DirectoryView({ people, canEdit, onAdd, onUpdate, onDelete, onImport }:
       <div className="flex items-center gap-2" style={{ marginBottom: 14, flexWrap: "wrap" }}>
         <div className="relative" style={{ flex: 1, minWidth: 180 }}>
           <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.faint }} />
-          <input className="kb-focus w-full" value={q} onChange={(e) => setQ(e.target.value)} placeholder="用名字或号码搜索" style={{ ...inputStyle, paddingLeft: 36 }} />
+          <input className="kb-focus w-full" value={q} onChange={(e) => setQ(e.target.value)} placeholder="用中文名、英文名或号码搜索" style={{ ...inputStyle, paddingLeft: 36 }} />
         </div>
         {cohorts.length > 0 && (
           <select className="kb-focus" value={cohortFilter} onChange={(e) => setCohortFilter(e.target.value)} style={{ background: cohortFilter ? C.accentSoft : C.surface, color: cohortFilter ? C.accent : C.inkSoft, border: `1px solid ${cohortFilter ? "#CDE6E4" : C.line}`, borderRadius: 9, padding: "9px 10px", fontSize: 13.5, cursor: "pointer" }}>
@@ -946,6 +951,7 @@ function DirectoryView({ people, canEdit, onAdd, onUpdate, onDelete, onImport }:
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
                   <span style={{ fontSize: 14.5, fontWeight: 600, color: C.ink }}>{p.name}</span>
+                  {p.englishName && <span style={{ fontSize: 13, color: C.muted }}>{p.englishName}</span>}
                   <RoleBadge role={p.role} small />
                   {p.cohort && <CohortChip cohort={p.cohort} />}
                 </div>
@@ -975,6 +981,43 @@ function DirectoryView({ people, canEdit, onAdd, onUpdate, onDelete, onImport }:
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// ---- 期数下拉(预设 第1期…第7期 + 已有期数,可自定义加期)----------
+const COHORT_PRESETS = ["第1期", "第2期", "第3期", "第4期", "第5期", "第6期", "第7期"]
+const cohortNum = (s: string) => parseInt(s.replace(/\D/g, ""), 10) || 9999
+
+function CohortSelect({ value, onChange, cohorts }: {
+  value: string
+  onChange: (v: string) => void
+  cohorts: string[]
+}) {
+  const known = useMemo(
+    () => [...new Set([...COHORT_PRESETS, ...cohorts.filter(Boolean)])].sort((a, b) => cohortNum(a) - cohortNum(b) || a.localeCompare(b)),
+    [cohorts]
+  )
+  const [custom, setCustom] = useState(false)
+  const inCustom = custom || (!!value && !known.includes(value))
+  const base: React.CSSProperties = { background: C.surface, border: `1px solid ${C.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, color: C.ink }
+
+  return (
+    <div className="flex items-center gap-2" style={{ minWidth: 0 }}>
+      <select className="kb-focus" value={inCustom ? "__custom__" : value}
+        onChange={(e) => {
+          if (e.target.value === "__custom__") { setCustom(true); onChange("") }
+          else { setCustom(false); onChange(e.target.value) }
+        }}
+        style={{ ...base, flex: inCustom ? "0 0 auto" : 1, cursor: "pointer" }}>
+        <option value="">未设期数</option>
+        {known.map((c) => <option key={c} value={c}>{c}</option>)}
+        <option value="__custom__">＋ 新增期数…</option>
+      </select>
+      {inCustom && (
+        <input className="kb-focus" autoFocus value={value} onChange={(e) => onChange(e.target.value)}
+          placeholder="例如 第8期" style={{ ...base, flex: 1, minWidth: 0 }} />
       )}
     </div>
   )
@@ -1436,7 +1479,7 @@ function PeoplePicker({ people, multi, value, onChange, placeholder }: {
   const selected = multi ? ((value as string[]) || []) : value ? [value as string] : []
   const ql = q.trim().toLowerCase()
   const pool = people.filter((p) => !selected.includes(p.name))
-  const matches = (ql ? pool.filter((p) => p.name.toLowerCase().includes(ql) || (!!digits(q) && digits(p.phone).includes(digits(q)))) : pool).slice(0, 8)
+  const matches = (ql ? pool.filter((p) => p.name.toLowerCase().includes(ql) || p.englishName.toLowerCase().includes(ql) || (!!digits(q) && digits(p.phone).includes(digits(q)))) : pool).slice(0, 8)
   const exact = people.some((p) => p.name === q.trim()) || selected.includes(q.trim())
 
   const add = (name: string) => {
@@ -1479,6 +1522,7 @@ function PeoplePicker({ people, multi, value, onChange, placeholder }: {
               <Avatar name={p.name} size={26} />
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ fontSize: 14, color: C.ink }}>{p.name}</span>
+                {p.englishName && <span style={{ fontSize: 12.5, color: C.muted, marginLeft: 6 }}>{p.englishName}</span>}
                 {p.phone && <span style={{ fontSize: 12, color: C.faint, marginLeft: 8, fontFamily: mono }}>{p.phone}</span>}
                 {p.cohort && <span style={{ fontSize: 11.5, color: C.faint, marginLeft: 8 }}>· {p.cohort}</span>}
               </span>

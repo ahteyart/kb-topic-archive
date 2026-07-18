@@ -77,11 +77,21 @@ export function matchSpeaker(rawName: string, people: Person[]): string {
     return name
   }
   const lower = name.toLowerCase()
-  const exact = people.find((p) => p.name.toLowerCase() === lower)
-  if (exact) return exact.name
-  const partial = people.find(
-    (p) => p.name.toLowerCase().includes(lower) || lower.includes(p.name.toLowerCase())
+  // 精确:中文名或英文名
+  const exact = people.find(
+    (p) => p.name.toLowerCase() === lower || (p.englishName && p.englishName.toLowerCase() === lower)
   )
+  if (exact) return exact.name
+  // 模糊:包含关系(WhatsApp 里常是「Jovan Tan」这类)
+  const partial = people.find((p) => {
+    const cn = p.name.toLowerCase()
+    const en = (p.englishName || "").toLowerCase()
+    return (
+      cn.includes(lower) ||
+      lower.includes(cn) ||
+      (!!en && (en.includes(lower) || lower.includes(en)))
+    )
+  })
   return partial ? partial.name : name
 }
 

@@ -54,7 +54,8 @@
       "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '用户管理:管理人可新增登录账号、设角色、重置密码、删除 *)",
       "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m 'WhatsApp 导入:导出上传 → AI 分段 → 草稿箱审核 → 入库 *)",
       "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m 'WhatsApp 解析:兼容 [时间, 日期] 顺序的 iOS 导出变体 *)",
-      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '界面「分类」改为「课题主题」\\(空值占位「未分类」→「未定主题」\\) *)"
+      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '界面「分类」改为「课题主题」\\(空值占位「未分类」→「未定主题」\\) *)",
+      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '名录:加英文名栏,「名字」改「中文名」,期数改下拉\\(第1-7期+可新增\\) *)"
     ]
   }
 }
