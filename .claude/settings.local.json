@@ -56,7 +56,9 @@
       "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m 'WhatsApp 解析:兼容 [时间, 日期] 顺序的 iOS 导出变体 *)",
       "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '界面「分类」改为「课题主题」\\(空值占位「未分类」→「未定主题」\\) *)",
       "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '名录:加英文名栏,「名字」改「中文名」,期数改下拉\\(第1-7期+可新增\\) *)",
-      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '期数统一为下拉\\(中文数字 第一期～第七期\\);课题支持附 PDF/图片 *)"
+      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '期数统一为下拉\\(中文数字 第一期～第七期\\);课题支持附 PDF/图片 *)",
+      "Bash(npx next *)",
+      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '课题精简:移除老师结论、讨论过程、发问学员、回答/参与 *)"
     ]
   }
 }

@@ -380,16 +380,13 @@ function ListView({ topics, total, onOpen, activeCat, activeStatus, search, onNe
               <StatusPill status={t.status} />
             </div>
             <h2 style={{ fontFamily: serif, fontSize: 17, fontWeight: 400, color: C.ink, lineHeight: 1.5, marginBottom: 6, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap" }}>{t.title}</h2>
-            {t.conclusion && (
-              <p style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.65, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{t.conclusion}</p>
-            )}
             <div className="flex items-center gap-2" style={{ marginTop: 10 }}>
-              {t.asker && (
-                <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12.5, color: C.inkSoft }}>
-                  <Avatar name={t.asker} size={20} /> {t.asker} 发问
+              {t.messages?.length > 0 && <span style={{ fontSize: 12, color: C.faint }}>{t.messages.reduce((n, m) => n + 1 + (m.replies?.length ?? 0), 0)} 条发言</span>}
+              {t.attachments?.length > 0 && (
+                <span className="inline-flex items-center gap-1" style={{ fontSize: 12, color: C.faint }}>
+                  <Paperclip size={12} /> {t.attachments.length}
                 </span>
               )}
-              {t.contributors?.length > 0 && <span style={{ fontSize: 12, color: C.faint }}>· {t.contributors.length} 人参与</span>}
               <span className="flex-1" />
               <span className="inline-flex items-center gap-1" style={{ color: C.accent, fontSize: 13 }}>阅读 <ChevronRight size={14} /></span>
             </div>
@@ -421,37 +418,6 @@ function DetailView({ t, people, canEdit, onBack, onEdit, onDelete, onStudent }:
 
       <h1 style={{ fontFamily: serif, fontSize: 18, fontWeight: 400, color: C.ink, lineHeight: 1.7, marginBottom: 16, whiteSpace: "pre-wrap" }}>{t.title}</h1>
 
-      {hasPeople && (
-        <div className="flex items-center gap-3" style={{ flexWrap: "wrap", marginBottom: 22, paddingBottom: 20, borderBottom: `1px solid ${C.lineSoft}` }}>
-          {t.asker && t.asker.trim() && (
-            <button className="kb-focus" onClick={() => onStudent(t.asker.trim())} style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.bg, border: `1px solid ${C.line}`, borderRadius: 20, padding: "5px 12px 5px 5px", cursor: "pointer" }}>
-              <Avatar name={t.asker} size={24} />
-              <span style={{ fontSize: 13.5, color: C.ink }}><b style={{ fontWeight: 600 }}>{t.asker}</b> <span style={{ color: C.muted }}>发问</span></span>
-              <RoleBadge role={findRole(people, t.asker.trim())} small />
-            </button>
-          )}
-          {t.contributors?.length > 0 && (
-            <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
-              <span style={{ fontSize: 12.5, color: C.faint }}>回答 / 参与</span>
-              {t.contributors.map((c) => (
-                <button key={c} className="kb-focus" onClick={() => onStudent(c)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "transparent", border: "none", cursor: "pointer", padding: "2px 4px" }}>
-                  <Avatar name={c} size={22} />
-                  <span style={{ fontSize: 13, color: C.inkSoft }}>{c}</span>
-                  <RoleBadge role={findRole(people, c)} small />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {t.discussion && (
-        <section style={{ marginBottom: 24 }}>
-          <SectionLabel text="讨论过程" />
-          <p style={{ fontSize: 15, color: C.inkSoft, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{t.discussion}</p>
-        </section>
-      )}
-
       {t.messages?.length > 0 && (
         <section style={{ marginBottom: 24 }}>
           <SectionLabel text={`讨论记录 · ${t.messages.reduce((n, m) => n + 1 + (m.replies?.length ?? 0), 0)} 条发言`} />
@@ -464,14 +430,6 @@ function DetailView({ t, people, canEdit, onBack, onEdit, onDelete, onStudent }:
       )}
 
       <AttachmentList items={t.attachments} />
-
-      <section style={{ background: C.accentSoft, border: `1px solid #CDE6E4`, borderRadius: 12, padding: "18px 20px", marginBottom: 24 }}>
-        <div className="flex items-center gap-1.5" style={{ marginBottom: 10 }}>
-          <CheckCircle2 size={15} style={{ color: C.accent }} />
-          <span style={{ fontFamily: mono, fontSize: 11, letterSpacing: 1.5, color: C.accent, textTransform: "uppercase", fontWeight: 600 }}>老师结论 · 答案</span>
-        </div>
-        <p style={{ fontSize: 15.5, color: C.ink, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{t.conclusion || "还没有记录结论。"}</p>
-      </section>
 
       {t.tags?.length > 0 && (
         <div className="flex items-center gap-2" style={{ flexWrap: "wrap", marginBottom: 24 }}>
@@ -664,19 +622,6 @@ function EditView({ draft, setDraft, onSave, onCancel, categories, people, cohor
         </select>
       </Field>
 
-      <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field label="发问学员" hint="从名录里选,也可选管理人">
-          <PeoplePicker people={people} value={draft.asker} onChange={(v) => setDraft({ ...draft, asker: v as string })} placeholder="输入名字或号码" />
-        </Field>
-        <Field label="回答 / 参与" hint="可多选,含管理人">
-          <PeoplePicker people={people} multi value={draft.contributors} onChange={(v) => setDraft({ ...draft, contributors: v as string[] })} placeholder="输入名字或号码" />
-        </Field>
-      </div>
-
-      <Field label="讨论过程" hint="可选:简单概括来龙去脉">
-        <textarea className="kb-focus" style={{ ...inputStyle, minHeight: 80, resize: "vertical" }} value={draft.discussion} onChange={set("discussion")} placeholder="一句话背景摘要(下面可逐条记录每个人的发言)" />
-      </Field>
-
       <div style={{ marginBottom: 16 }}>
         <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.inkSoft, marginBottom: 8 }}>
           讨论记录<span style={{ fontWeight: 400, color: C.faint, marginLeft: 8, fontSize: 12.5 }}>逐条记下每个人说了什么,发言人从名录选</span>
@@ -742,10 +687,6 @@ function EditView({ draft, setDraft, onSave, onCancel, categories, people, cohor
         </label>
         {upErr && <div style={{ fontSize: 12.5, color: C.danger, marginTop: 6 }}>{upErr}</div>}
       </div>
-
-      <Field label="老师结论 · 答案" hint="这是新生最想看到的部分,写清楚可执行的结论">
-        <textarea className="kb-focus" style={{ ...inputStyle, minHeight: 130, resize: "vertical" }} value={draft.conclusion} onChange={set("conclusion")} placeholder="最后得出的答案、做法或建议" />
-      </Field>
 
       <div style={{ marginBottom: 16 }}>
         <div className="flex items-center justify-between" style={{ marginBottom: 6, gap: 8 }}>
