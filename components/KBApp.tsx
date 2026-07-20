@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
   Search, Plus, ArrowLeft, Pencil, Trash2, X, BookOpen,
   ChevronRight, Menu, CheckCircle2, MessageCircle, Tag,
   Sparkles, Loader2, Users, HelpCircle, Contact, Upload, Phone, LogOut,
-  CornerDownRight, UserCog, KeyRound, MessageSquarePlus,
+  CornerDownRight, UserCog, KeyRound, MessageSquarePlus, Paperclip, FileText, Download,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -19,8 +19,9 @@ import {
   addMember, updateMember, deleteMember, importMembers,
   listUsers, createUser, updateUserRole, resetUserPassword, deleteUser,
   loadDrafts, createDrafts, setDraftStatus, deleteDraft, draftToTopicDraft,
+  uploadAttachment, removeAttachmentFile, signAttachments, attachmentTypeError,
   type Topic, type Person, type TopicDraft, type Message, type AppUser,
-  type WaDraft, type DraftRow, type DraftStatus,
+  type WaDraft, type DraftRow, type DraftStatus, type Attachment,
 } from "@/lib/store"
 import { parseWaExport, matchSpeaker, waDates, filterByDateRange } from "@/lib/whatsapp"
 import type { MemberRole, TopicStatus } from "@/lib/database.types"
@@ -145,11 +146,11 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
   const openStudent = (name: string) => { setStudentName(name); setView("student") }
 
   const openNew = () => {
-    setDraft({ id: null, title: "", category: "", cohort: "", tags: "", discussion: "", conclusion: "", status: "讨论中", asker: "", contributors: [], messages: [] })
+    setDraft({ id: null, title: "", category: "", cohort: "", tags: "", discussion: "", conclusion: "", status: "讨论中", asker: "", contributors: [], messages: [], attachments: [] })
     setView("edit")
   }
   const openEdit = (t: Topic) => {
-    setDraft({ id: t.id, title: t.title, category: t.category, cohort: t.cohort, status: t.status, discussion: t.discussion, conclusion: t.conclusion, tags: (t.tags || []).join(", "), asker: t.asker || "", contributors: t.contributors || [], messages: (t.messages || []).map((m) => ({ ...m, replies: (m.replies || []).map((r) => ({ ...r })) })) })
+    setDraft({ id: t.id, title: t.title, category: t.category, cohort: t.cohort, status: t.status, discussion: t.discussion, conclusion: t.conclusion, tags: (t.tags || []).join(", "), asker: t.asker || "", contributors: t.contributors || [], messages: (t.messages || []).map((m) => ({ ...m, replies: (m.replies || []).map((r) => ({ ...r })) })), attachments: (t.attachments || []).map((a) => ({ ...a })) })
     setView("edit")
   }
   const saveDraft = async () => {
@@ -293,7 +294,7 @@ export default function KBApp({ role, email }: { role: MemberRole; email: string
             <Empty title="找不到这条课题" body="可能已被删除。" cta="返回课题库" onCta={() => setView("list")} />
           )}
           {view === "edit" && draft && (
-            <EditView draft={draft} setDraft={setDraft} onSave={saveDraft} busy={busy} onCancel={() => { if (pendingDraftId) { setPendingDraftId(null); setView("waimport") } else if (draft.id) { setSelectedId(draft.id); setView("detail") } else setView("list") }} categories={categories.map((c) => c[0])} people={people} />
+            <EditView draft={draft} setDraft={setDraft} onSave={saveDraft} busy={busy} onCancel={() => { if (pendingDraftId) { setPendingDraftId(null); setView("waimport") } else if (draft.id) { setSelectedId(draft.id); setView("detail") } else setView("list") }} categories={categories.map((c) => c[0])} people={people} cohorts={cohorts} />
           )}
           {view === "roster" && (
             <RosterView students={rosterList} maxScore={maxScore} onOpen={openStudent} role={rosterRole} setRole={setRosterRole} counts={{ student: students.filter((s) => s.role === "student").length, admin: students.filter((s) => s.role === "admin").length, all: students.length }} cohort={rosterCohort} setCohort={setRosterCohort} cohorts={cohorts} />
@@ -462,6 +463,8 @@ function DetailView({ t, people, canEdit, onBack, onEdit, onDelete, onStudent }:
         </section>
       )}
 
+      <AttachmentList items={t.attachments} />
+
       <section style={{ background: C.accentSoft, border: `1px solid #CDE6E4`, borderRadius: 12, padding: "18px 20px", marginBottom: 24 }}>
         <div className="flex items-center gap-1.5" style={{ marginBottom: 10 }}>
           <CheckCircle2 size={15} style={{ color: C.accent }} />
@@ -490,6 +493,56 @@ function DetailView({ t, people, canEdit, onBack, onEdit, onDelete, onStudent }:
         </div>
       )}
     </div>
+  )
+}
+
+// 附件展示:私有桶 → 渲染前换签名 URL;图片直接预览,PDF 给链接
+function AttachmentList({ items }: { items: Attachment[] }) {
+  const [signed, setSigned] = useState<(Attachment & { url: string })[]>([])
+  const [err, setErr] = useState(false)
+  useEffect(() => {
+    let alive = true
+    if (!items.length) { setSigned([]); return }
+    signAttachments(items)
+      .then((s) => { if (alive) setSigned(s) })
+      .catch(() => { if (alive) setErr(true) })
+    return () => { alive = false }
+  }, [items])
+
+  if (!items.length) return null
+  const images = signed.filter((a) => /^image\//.test(a.mime))
+  const files = signed.filter((a) => !/^image\//.test(a.mime))
+
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <SectionLabel text={`附件 · ${items.length}`} />
+      {err && <div style={{ fontSize: 13, color: C.danger }}>附件加载失败,请刷新重试。</div>}
+      {images.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10, marginBottom: files.length ? 10 : 0 }}>
+          {images.map((a) => (
+            <a key={a.path} href={a.url} target="_blank" rel="noreferrer" className="kb-focus"
+              style={{ display: "block", border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", background: C.surface }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={a.url} alt={a.name} style={{ display: "block", width: "100%", height: 130, objectFit: "cover" }} />
+              <div style={{ fontSize: 12, color: C.muted, padding: "6px 8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</div>
+            </a>
+          ))}
+        </div>
+      )}
+      {files.length > 0 && (
+        <div style={{ display: "grid", gap: 8 }}>
+          {files.map((a) => (
+            <a key={a.path} href={a.url} target="_blank" rel="noreferrer" className="kb-focus flex items-center gap-2"
+              style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 12px", textDecoration: "none" }}>
+              <FileText size={16} style={{ color: C.brass, flexShrink: 0 }} />
+              <span style={{ flex: 1, minWidth: 0, fontSize: 14, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
+              <span style={{ fontSize: 12, color: C.faint, fontFamily: mono }}>{fmtSize(a.size)}</span>
+              <Download size={15} style={{ color: C.accent, flexShrink: 0 }} />
+            </a>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -524,8 +577,8 @@ function MsgBubble({ m, people, onStudent, reply }: { m: Message; people: Person
 }
 
 // ---- edit view -----------------------------------------------------
-function EditView({ draft, setDraft, onSave, onCancel, categories, people, busy }: {
-  draft: TopicDraft; setDraft: (d: TopicDraft) => void; onSave: () => void; onCancel: () => void; categories: string[]; people: Person[]; busy: boolean
+function EditView({ draft, setDraft, onSave, onCancel, categories, people, cohorts, busy }: {
+  draft: TopicDraft; setDraft: (d: TopicDraft) => void; onSave: () => void; onCancel: () => void; categories: string[]; people: Person[]; cohorts: string[]; busy: boolean
 }) {
   const set = (k: keyof TopicDraft) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => setDraft({ ...draft, [k]: e.target.value })
   const [tagging, setTagging] = useState<"idle" | "loading" | "error">("idle")
@@ -536,6 +589,33 @@ function EditView({ draft, setDraft, onSave, onCancel, categories, people, busy 
   const addMsg = () => setDraft({ ...draft, messages: [...msgs, { id: uid(), speaker: draft.asker || "", text: "", replies: [] }] })
   const updateMsg = (i: number, patch: Partial<Message>) => setDraft({ ...draft, messages: msgs.map((m, j) => (j === i ? { ...m, ...patch } : m)) })
   const removeMsg = (i: number) => setDraft({ ...draft, messages: msgs.filter((_, j) => j !== i) })
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+  const [uploading, setUploading] = useState(false)
+  const [upErr, setUpErr] = useState<string | null>(null)
+  const onPickFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = [...(e.target.files ?? [])]
+    e.target.value = ""
+    if (!files.length) return
+    setUploading(true); setUpErr(null)
+    const added: Attachment[] = []
+    const errs: string[] = []
+    for (const f of files) {
+      const bad = attachmentTypeError(f)
+      if (bad) { errs.push(bad); continue }
+      try { added.push(await uploadAttachment(f)) } catch (err) { errs.push(`${f.name}:${(err as Error).message}`) }
+    }
+    // 用函数式读取最新 draft,避免多文件上传期间覆盖其它编辑
+    if (added.length) setDraft({ ...draftRef.current, attachments: [...draftRef.current.attachments, ...added] })
+    setUpErr(errs.length ? errs.join(";") : null)
+    setUploading(false)
+  }
+  const removeAttachment = (i: number) => {
+    const a = draft.attachments[i]
+    setDraft({ ...draft, attachments: draft.attachments.filter((_, j) => j !== i) })
+    if (a) removeAttachmentFile(a.path).catch(() => { /* 存储清理失败不阻塞编辑 */ })
+  }
+
   const addReply = (i: number) => setDraft({ ...draft, messages: msgs.map((m, j) => (j === i ? { ...m, replies: [...(m.replies ?? []), { id: uid(), speaker: "", text: "" }] } : m)) })
   const updateReply = (i: number, k: number, patch: Partial<Message>) => setDraft({ ...draft, messages: msgs.map((m, j) => (j === i ? { ...m, replies: (m.replies ?? []).map((r, l) => (l === k ? { ...r, ...patch } : r)) } : m)) })
   const removeReply = (i: number, k: number) => setDraft({ ...draft, messages: msgs.map((m, j) => (j === i ? { ...m, replies: (m.replies ?? []).filter((_, l) => l !== k) } : m)) })
@@ -574,7 +654,7 @@ function EditView({ draft, setDraft, onSave, onCancel, categories, people, busy 
           <datalist id="cat-list">{categories.map((c) => <option key={c} value={c} />)}</datalist>
         </Field>
         <Field label="期数">
-          <input className="kb-focus" style={inputStyle} value={draft.cohort} onChange={set("cohort")} placeholder="例如:第2期" />
+          <CohortSelect value={draft.cohort} onChange={(v) => setDraft({ ...draft, cohort: v })} cohorts={cohorts} />
         </Field>
       </div>
 
@@ -636,6 +716,31 @@ function EditView({ draft, setDraft, onSave, onCancel, categories, people, busy 
         <button className="kb-focus" onClick={addMsg} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.surface, color: C.accent, border: `1px dashed #BCD9D7`, borderRadius: 9, padding: "9px 14px", fontSize: 13.5, cursor: "pointer", marginTop: msgs.length ? 10 : 0, width: "100%", justifyContent: "center" }}>
           <Plus size={15} /> 添加一条发言
         </button>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.inkSoft, marginBottom: 8 }}>
+          附件<span style={{ fontWeight: 400, color: C.faint, marginLeft: 8, fontSize: 12.5 }}>PDF 或图片,单个不超过 10MB</span>
+        </label>
+        {draft.attachments.length > 0 && (
+          <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
+            {draft.attachments.map((a, i) => (
+              <div key={a.path} className="flex items-center gap-2" style={{ background: C.bg, border: `1px solid ${C.line}`, borderRadius: 9, padding: "8px 10px" }}>
+                {/^image\//.test(a.mime) ? <Paperclip size={15} style={{ color: C.accent, flexShrink: 0 }} /> : <FileText size={15} style={{ color: C.brass, flexShrink: 0 }} />}
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
+                <span style={{ fontSize: 12, color: C.faint, fontFamily: mono, flexShrink: 0 }}>{fmtSize(a.size)}</span>
+                <button className="kb-focus" aria-label="移除附件" onClick={() => removeAttachment(i)}
+                  style={{ background: "transparent", border: "none", color: C.faint, cursor: "pointer", padding: 4, flexShrink: 0 }}><Trash2 size={14} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+        <label className="kb-focus" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, background: C.surface, color: uploading ? C.faint : C.accent, border: `1px dashed #BCD9D7`, borderRadius: 9, padding: "9px 14px", fontSize: 13.5, cursor: uploading ? "default" : "pointer", width: "100%" }}>
+          {uploading ? <Loader2 size={15} className="kb-spin" /> : <Paperclip size={15} />}
+          {uploading ? "上传中…" : "添加 PDF / 图片"}
+          <input type="file" accept="image/*,application/pdf" multiple disabled={uploading} onChange={onPickFiles} style={{ display: "none" }} />
+        </label>
+        {upErr && <div style={{ fontSize: 12.5, color: C.danger, marginTop: 6 }}>{upErr}</div>}
       </div>
 
       <Field label="老师结论 · 答案" hint="这是新生最想看到的部分,写清楚可执行的结论">
@@ -986,9 +1091,18 @@ function DirectoryView({ people, canEdit, onAdd, onUpdate, onDelete, onImport }:
   )
 }
 
-// ---- 期数下拉(预设 第1期…第7期 + 已有期数,可自定义加期)----------
-const COHORT_PRESETS = ["第1期", "第2期", "第3期", "第4期", "第5期", "第6期", "第7期"]
-const cohortNum = (s: string) => parseInt(s.replace(/\D/g, ""), 10) || 9999
+const fmtSize = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`)
+
+// ---- 期数下拉(预设 第一期…第七期 + 已有期数,可自定义加期)----------
+const COHORT_PRESETS = ["第一期", "第二期", "第三期", "第四期", "第五期", "第六期", "第七期"]
+const CN_NUM: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 }
+// 「第一期」「第8期」都能排序
+const cohortNum = (s: string) => {
+  const ar = parseInt(s.replace(/\D/g, ""), 10)
+  if (!Number.isNaN(ar)) return ar
+  for (const ch of s) if (CN_NUM[ch]) return CN_NUM[ch]
+  return 9999
+}
 
 function CohortSelect({ value, onChange, cohorts }: {
   value: string

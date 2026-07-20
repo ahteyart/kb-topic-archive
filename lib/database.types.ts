@@ -168,6 +168,47 @@ export type Database = {
           },
         ]
       }
+      topic_attachments: {
+        Row: {
+          created_at: string | null
+          id: string
+          mime: string | null
+          name: string
+          path: string
+          position: number
+          size: number | null
+          topic_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          mime?: string | null
+          name: string
+          path: string
+          position?: number
+          size?: number | null
+          topic_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          mime?: string | null
+          name?: string
+          path?: string
+          position?: number
+          size?: number | null
+          topic_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_attachments_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       topic_drafts: {
         Row: {
           chat_name: string | null

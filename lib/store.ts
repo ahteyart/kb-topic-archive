@@ -22,6 +22,13 @@ export type Message = {
   replies?: Message[] // 一级回复(仅顶层发言才有)
 }
 
+export type Attachment = {
+  path: string // storage 路径(新上传的文件已经在 storage 里)
+  name: string
+  mime: string
+  size: number
+}
+
 export type Topic = {
   id: string
   code: string
@@ -35,6 +42,7 @@ export type Topic = {
   asker: string
   contributors: string[]
   messages: Message[]
+  attachments: Attachment[]
   createdAt: number
   updatedAt: number
 }
@@ -51,6 +59,7 @@ export type TopicDraft = {
   asker: string
   contributors: string[]
   messages: Message[]
+  attachments: Attachment[]
 }
 
 const ms = (s?: string | null) => (s ? new Date(s).getTime() : 0)
@@ -65,7 +74,8 @@ export async function loadTopics(): Promise<Topic[]> {
        cohort:cohorts(name),
        asker:members!topics_asker_id_fkey(name),
        contributors:topic_contributors(member:members(name)),
-       messages:discussion_messages(id, body, position, parent_id, speaker_name, speaker:members(name))`
+       messages:discussion_messages(id, body, position, parent_id, speaker_name, speaker:members(name)),
+       attachments:topic_attachments(path, name, mime, size, position)`
     )
     .order("updated_at", { ascending: false })
   if (error) throw error
@@ -104,6 +114,10 @@ export async function loadTopics(): Promise<Topic[]> {
       asker,
       contributors,
       messages,
+      attachments: (t.attachments ?? [])
+        .slice()
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+        .map((a) => ({ path: a.path, name: a.name, mime: a.mime ?? "", size: a.size ?? 0 })),
       createdAt: ms(t.created_at),
       updatedAt: ms(t.updated_at),
     }
@@ -173,6 +187,46 @@ async function resolveMemberIds(names: string[]): Promise<Map<string, string>> {
   return map
 }
 
+// ---- attachments (Supabase Storage: 私有桶 topic-files) -------------
+export const BUCKET = "topic-files"
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024 // 10MB
+const ALLOWED = /^(image\/(png|jpe?g|gif|webp|heic|heif)|application\/pdf)$/i
+
+export function attachmentTypeError(file: File): string | null {
+  if (!ALLOWED.test(file.type)) return `${file.name}:只支持图片或 PDF`
+  if (file.size > MAX_ATTACHMENT_BYTES) return `${file.name}:超过 10MB`
+  return null
+}
+
+// 选中即上传(用随机路径),返回可存进 topic_attachments 的元数据
+export async function uploadAttachment(file: File): Promise<Attachment> {
+  const supabase = createClient()
+  const ext = (file.name.match(/\.[^.]+$/)?.[0] ?? "").slice(0, 10)
+  const path = `${crypto.randomUUID()}${ext}`
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+    contentType: file.type,
+    upsert: false,
+  })
+  if (error) throw error
+  return { path, name: file.name, mime: file.type, size: file.size }
+}
+
+export async function removeAttachmentFile(path: string): Promise<void> {
+  const supabase = createClient()
+  await supabase.storage.from(BUCKET).remove([path])
+}
+
+// 私有桶:渲染前换成有时效的签名 URL
+export async function signAttachments(items: Attachment[]): Promise<(Attachment & { url: string })[]> {
+  if (!items.length) return []
+  const supabase = createClient()
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrls(items.map((a) => a.path), 3600)
+  if (error) throw error
+  return items.map((a, i) => ({ ...a, url: data?.[i]?.signedUrl ?? "" }))
+}
+
 // ---- topic mutations -----------------------------------------------
 export async function saveTopic(draft: TopicDraft): Promise<string> {
   const supabase = createClient()
@@ -230,6 +284,7 @@ export async function saveTopic(draft: TopicDraft): Promise<string> {
     // replace children
     await supabase.from("topic_contributors").delete().eq("topic_id", topicId)
     await supabase.from("discussion_messages").delete().eq("topic_id", topicId)
+    await supabase.from("topic_attachments").delete().eq("topic_id", topicId)
   } else {
     const { data, error } = await supabase
       .from("topics")
@@ -298,6 +353,21 @@ export async function saveTopic(draft: TopicDraft): Promise<string> {
         if (e3) throw e3
       }
     }
+  }
+
+  // 附件(文件已在选中时上传到 storage,这里只写元数据)
+  if (draft.attachments.length) {
+    const { error } = await supabase.from("topic_attachments").insert(
+      draft.attachments.map((a, i) => ({
+        topic_id: topicId!,
+        path: a.path,
+        name: a.name,
+        mime: a.mime || null,
+        size: a.size || null,
+        position: i,
+      }))
+    )
+    if (error) throw error
   }
 
   return topicId!
@@ -470,6 +540,7 @@ export function draftToTopicDraft(d: WaDraft): TopicDraft {
       speaker: m.speaker,
       text: m.text,
     })),
+    attachments: [],
   }
 }
 
