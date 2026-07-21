@@ -43,3 +43,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# 本地数据库备份
+/backups

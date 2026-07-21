@@ -31,6 +31,41 @@ supabase/migrations/    数据库迁移(0001 建表、0002 RLS、0003 加固)
 supabase/seed.sql       可选示例数据
 ```
 
+## 开发环境与生产环境(重要)
+
+系统跑在**两个隔离的数据库**上,这样改东西不会碰到真实数据:
+
+| 环境 | 用哪个库 | 谁在用 |
+| --- | --- | --- |
+| 本地 `npm run dev` | **测试库**(staging,假数据) | 开发/调试 |
+| Vercel **Preview**(`vercel deploy`) | **测试库**(staging) | 上线前验证 |
+| Vercel **Production**(`vercel --prod`) | **生产库**(真实数据) | 正式站 `kb-topic-archive.vercel.app` |
+
+- `.env.local` 已指向测试库,所以本地看到的是假数据——这是对的。想看真实系统,用正式网址。
+- **改数据库结构**:先在测试库验证,再到生产库应用,并把 SQL 存进 `supabase/migrations/`。
+- 测试库管理员:`admin@kb.local` / `StagingPass123`(仅测试用)。
+
+## 备份与恢复
+
+生产库是免费版,默认没有自动备份,所以配了两层:
+
+- **自动**:GitHub Actions「每日数据库备份」每天导出一份快照,存成 artifact(保留 30 天)。**需先在仓库 Settings → Secrets and variables → Actions 加 `SUPABASE_DB_URL`**(生产库连接串,Supabase 面板 → Project Settings → Database → Connection string 复制,含密码)。加好后可在 Actions 页手动点一次确认能跑。
+- **手动**(改大动作前先跑一次):
+  ```bash
+  SUPABASE_DB_URL="postgresql://postgres.xxx:密码@...pooler.supabase.com:5432/postgres" bash scripts/backup.sh
+  ```
+  快照存在本地 `backups/`(不进 git)。恢复:把导出的 SQL 贴回 Supabase SQL Editor 即可。
+
+> 注:附件的**实际文件**存在 Supabase Storage,不在数据库快照里;数据库快照包含所有课题/名录/讨论/账号。
+
+## 安全改动流程(怕改坏就照这个来)
+
+1. 涉及删数据/改结构 → **先备份**。
+2. 迁移**只加不减**,先在测试库验证。
+3. 本地(测试库)验证 → `npx vercel deploy`(预览)再验证 → 才 `npx vercel --prod`。
+4. 代码出错 → `git revert` + 重新部署,一键回退。
+5. 一次只改一件事,单独提交部署。
+
 ## 本地运行
 
 ```bash

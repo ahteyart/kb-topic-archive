@@ -1,0 +1,46 @@
+name: 每日数据库备份
+
+# 每天自动导出一份生产库快照存成 artifact(保留 30 天),也可手动触发。
+# 需要在仓库 Settings → Secrets and variables → Actions 里加一个 secret:
+#   SUPABASE_DB_URL = 生产库连接串(Supabase 面板 → Project Settings → Database → Connection string,含密码)
+
+on:
+  schedule:
+    - cron: "0 18 * * *" # 每天 UTC 18:00 ≈ 马来西亚时间凌晨 2:00
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检查是否已配置 SUPABASE_DB_URL
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$DB_URL" ]; then
+            echo "::error::尚未配置 SUPABASE_DB_URL secret,无法备份。请在仓库 Settings → Secrets 里添加。"
+            exit 1
+          fi
+
+      - name: 安装 Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: 导出数据库(结构 + 数据)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          ts=$(date -u +%Y%m%d-%H%M)
+          echo "STAMP=$ts" >> "$GITHUB_ENV"
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f "schema-$ts.sql"
+          supabase db dump --db-url "$SUPABASE_DB_URL" --data-only --use-copy -f "data-$ts.sql"
+          gzip "schema-$ts.sql" "data-$ts.sql"
+          ls -lh *.sql.gz
+
+      - name: 上传备份 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-backup-${{ env.STAMP }}
+          path: "*.sql.gz"
+          retention-days: 30

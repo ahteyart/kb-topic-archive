@@ -58,7 +58,18 @@
       "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '名录:加英文名栏,「名字」改「中文名」,期数改下拉\\(第1-7期+可新增\\) *)",
       "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '期数统一为下拉\\(中文数字 第一期～第七期\\);课题支持附 PDF/图片 *)",
       "Bash(npx next *)",
-      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '课题精简:移除老师结论、讨论过程、发问学员、回答/参与 *)"
+      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '课题精简:移除老师结论、讨论过程、发问学员、回答/参与 *)",
+      "Bash(cat 0002_profiles_and_rls.sql 0003_harden_functions.sql 0004_add_message_replies.sql 0006_topic_drafts.sql 0007_members_english_name.sql 0008_topic_attachments.sql)",
+      "mcp__e623ca6e-5c67-4924-a343-d546266f9ba4__list_tables",
+      "Bash(npx --yes vercel@latest env ls)",
+      "Bash(npx --yes vercel@latest env rm NEXT_PUBLIC_SUPABASE_URL preview -y)",
+      "Bash(npx --yes vercel@latest env rm NEXT_PUBLIC_SUPABASE_ANON_KEY preview -y)",
+      "Bash(npx --yes vercel@latest env add NEXT_PUBLIC_SUPABASE_URL preview)",
+      "Bash(npx --yes vercel@latest env add NEXT_PUBLIC_SUPABASE_ANON_KEY preview)",
+      "Bash(npx --yes vercel@latest env add NEXT_PUBLIC_SUPABASE_URL production)",
+      "Bash(npx --yes vercel@latest env add NEXT_PUBLIC_SUPABASE_ANON_KEY production)",
+      "Bash(npx --yes vercel@latest env pull /tmp/prev.env --environment=preview --yes)",
+      "Bash(git -c user.name=Tey -c user.email=ahteyart@gmail.com commit -q -m '安全网:测试库隔离 + 每日备份 + 安全改动规矩 *)"
     ]
   }
 }
